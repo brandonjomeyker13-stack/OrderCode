@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.core.config import Settings
 from app.core.exceptions import ConflictError, UnauthorizedError
 from app.core.security import (
     create_access_token,
@@ -75,7 +75,7 @@ class AuthService:
             RefreshToken(
                 usuario_id=usuario.id,
                 token_hash=hash_token(raw_refresh),
-                expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+                expires_at=datetime.now(timezone.utc) + timedelta(days=Settings().REFRESH_TOKEN_EXPIRE_DAYS),
                 ip_origen=ip,
                 user_agent=user_agent,
             )

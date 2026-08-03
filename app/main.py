@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
-from app.core.config import settings
+from app.core.config import Settings
 from app.core.exceptions import (
     AppError,
     ConflictError,
@@ -16,7 +16,7 @@ from app.core.exceptions import (
     ValidationError,
 )
 
-logging.basicConfig(level=logging.INFO if settings.is_production else logging.DEBUG)
+logging.basicConfig(level=logging.INFO if Settings().is_production else logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
