@@ -20,17 +20,17 @@ logging.basicConfig(level=logging.INFO if Settings().is_production else logging.
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    debug=settings.DEBUG,
+    title=Settings.PROJECT_NAME,
+    debug=Settings.DEBUG,
     # Oculta /docs y /redoc en producción -- no hace falta exponer el
     # esquema completo de la API públicamente una vez esto se venda.
-    docs_url="/docs" if not settings.is_production else None,
-    redoc_url="/redoc" if not settings.is_production else None,
+    docs_url="/docs" if not Settings.is_production else None,
+    redoc_url="/redoc" if not Settings.is_production else None,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=Settings.cors_origins_list,
     allow_credentials=True,  # necesario para que la cookie de refresh viaje
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,7 +65,7 @@ def handle_unexpected_error(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
 
 
-app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+app.include_router(api_router, prefix=Settings.API_V1_PREFIX)
 
 
 @app.get("/health")
