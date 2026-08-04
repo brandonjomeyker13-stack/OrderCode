@@ -41,3 +41,13 @@ def cerrar_hacia_cliente(
     db: Session = Depends(get_db),
 ):
     return LoteService(db).cerrar_hacia_cliente(lote_id, empresa_id, fecha_entrega)
+from app.api.v1.deps import get_empresa_id, get_pagination
+from app.schemas.common import PaginationParams
+
+@router.get("", response_model=list[LoteOut])
+def listar_lotes(
+    pagination: PaginationParams = Depends(get_pagination),
+    empresa_id: int = Depends(get_empresa_id),
+    db: Session = Depends(get_db),
+):
+    return LoteService(db).listar(empresa_id, pagination.offset, pagination.page_size)

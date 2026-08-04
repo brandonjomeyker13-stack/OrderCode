@@ -50,3 +50,11 @@ def actualizar_taller(
     db: Session = Depends(get_db),
 ):
     return TallerService(db).actualizar(taller_id, empresa_id, data)
+@router.delete("/{taller_id}", status_code=204)
+def desactivar_taller(
+    taller_id: int,
+    empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    TallerService(db).desactivar(taller_id, empresa_id)

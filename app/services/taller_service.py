@@ -40,3 +40,9 @@ class TallerService:
         self.db.commit()
         self.db.refresh(taller)
         return taller
+    def desactivar(self, id: int, empresa_id: int) -> None:
+        """Soft-delete: un taller con histórico de asignaciones no se puede
+        borrar (RESTRICT en la FK). Se desactiva en vez de eliminarse."""
+        taller = self.obtener(id, empresa_id)
+        taller.activo = False
+        self.db.commit()

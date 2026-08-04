@@ -68,3 +68,12 @@ def cambiar_password(
 
         raise ForbiddenError("Solo puedes cambiar tu propia contraseña")
     UsuarioService(db).cambiar_password(usuario_id, empresa_id, data)
+    
+@router.delete("/{usuario_id}", status_code=204)
+def desactivar_usuario(
+    usuario_id: int,
+    empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    UsuarioService(db).desactivar(usuario_id, empresa_id)

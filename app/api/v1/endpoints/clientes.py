@@ -46,3 +46,10 @@ def actualizar_cliente(
     db: Session = Depends(get_db),
 ):
     return ClienteService(db).actualizar(cliente_id, empresa_id, data)
+@router.delete("/{cliente_id}", status_code=204)
+def desactivar_cliente(
+    cliente_id: int,
+    empresa_id: int = Depends(get_empresa_id),
+    db: Session = Depends(get_db),
+):
+    ClienteService(db).desactivar(cliente_id, empresa_id)

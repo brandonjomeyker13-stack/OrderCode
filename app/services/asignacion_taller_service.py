@@ -102,3 +102,5 @@ class AsignacionTallerService:
             for a in asignaciones
         ):
             lote.estado = EstadoLote.ENTREGADO_PARCIAL
+    def listar(self, empresa_id: int, offset: int, limit: int) -> list[AsignacionTaller]:
+        return self.repo.list(empresa_id, offset, limit)

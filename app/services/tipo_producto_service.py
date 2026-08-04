@@ -73,3 +73,16 @@ class TipoProductoService:
         self.db.commit()
         self.db.refresh(tipo)
         return tipo
+    def eliminar(self, id: int, empresa_id: int) -> None:
+        """Borrado físico, pero protegido: si ya existen lotes de este tipo,
+        la base de datos rechaza el borrado (ondelete=RESTRICT en Lote) y
+        aquí lo traducimos a un mensaje de negocio claro."""
+        tipo = self.obtener(id, empresa_id)
+        try:
+            self.db.delete(tipo)
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            raise ConflictError(
+                "No se puede eliminar: este tipo de producto ya tiene lotes registrados"
+            )

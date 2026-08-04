@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_empresa_id
+from app.api.v1.deps import get_empresa_id, get_pagination
 from app.db.session import get_db
 from app.schemas.asignacion_taller import (
     AsignacionTallerCreate,
@@ -10,6 +10,8 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerRegistrarDevolucion,
 )
 from app.services.asignacion_taller_service import AsignacionTallerService
+from app.api.v1.deps import get_empresa_id, get_pagination
+from app.schemas.common import PaginationParams
 
 router = APIRouter(prefix="/asignaciones", tags=["asignaciones"])
 
@@ -49,3 +51,12 @@ def registrar_devolucion(
     db: Session = Depends(get_db),
 ):
     return AsignacionTallerService(db).registrar_devolucion(asignacion_id, empresa_id, data)
+
+
+@router.get("", response_model=list[AsignacionTallerOut])
+def listar_asignaciones(
+    pagination: PaginationParams = Depends(get_pagination),
+    empresa_id: int = Depends(get_empresa_id),
+    db: Session = Depends(get_db),
+):
+    return AsignacionTallerService(db).listar(empresa_id, pagination.offset, pagination.page_size)

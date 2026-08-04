@@ -32,3 +32,4 @@ class Usuario(Base, TimestampMixin):
     empresa: Mapped["Empresa"] = relationship(
         back_populates="usuarios", foreign_keys=[empresa_id]
     )
+    

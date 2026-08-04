@@ -84,3 +84,11 @@ def lotes_activos_por_qr(
     """Vista principal al escanear el QR: lotes activos + disponibilidad."""
     tipo_producto = TipoProductoService(db).obtener_por_qr_token(token, empresa_id)
     return LoteService(db).listar_activos_por_tipo_producto(tipo_producto.id, empresa_id)
+@router.delete("/{tipo_producto_id}", status_code=204)
+def eliminar_tipo_producto(
+    tipo_producto_id: int,
+    empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    TipoProductoService(db).eliminar(tipo_producto_id, empresa_id)

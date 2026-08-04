@@ -34,3 +34,7 @@ class ClienteService:
         self.db.commit()
         self.db.refresh(cliente)
         return cliente
+    def desactivar(self, id: int, empresa_id: int) -> None:
+        cliente = self.obtener(id, empresa_id)
+        cliente.activo = False
+        self.db.commit()

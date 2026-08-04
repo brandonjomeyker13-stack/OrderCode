@@ -37,3 +37,8 @@ class IncidenciaService:
 
     def listar(self, empresa_id: int, offset: int, limit: int) -> list[Incidencia]:
         return self.repo.list(empresa_id, offset, limit)
+    def obtener(self, id: int, empresa_id: int) -> Incidencia:
+        incidencia = self.repo.get_by_id(id, empresa_id)
+        if incidencia is None:
+            raise NotFoundError("Incidencia no encontrada")
+        return incidencia

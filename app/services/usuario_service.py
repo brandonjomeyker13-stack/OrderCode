@@ -59,3 +59,10 @@ class UsuarioService:
         # acceso con la contraseña vieja, queda fuera de inmediato.
         self.refresh_repo.revocar_todos_de_usuario(usuario.id)
         self.db.commit()
+    def desactivar(self, id: int, empresa_id: int) -> None:
+        """Soft-delete: nunca se borra un usuario físicamente (rompería el
+        histórico de quién hizo qué). Se desactiva y se cierran sus sesiones."""
+        usuario = self.obtener(id, empresa_id)
+        usuario.activo = False
+        self.refresh_repo.revocar_todos_de_usuario(usuario.id)
+        self.db.commit()

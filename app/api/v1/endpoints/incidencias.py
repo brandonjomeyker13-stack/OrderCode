@@ -19,11 +19,10 @@ def crear_incidencia(
 ):
     return IncidenciaService(db).crear(empresa_id, data)
 
-
-@router.get("", response_model=list[IncidenciaOut])
-def listar_incidencias(
-    pagination: PaginationParams = Depends(get_pagination),
+@router.get("/{incidencia_id}", response_model=IncidenciaOut)
+def obtener_incidencia(
+    incidencia_id: int,
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
-    return IncidenciaService(db).listar(empresa_id, pagination.offset, pagination.page_size)
+    return IncidenciaService(db).obtener(incidencia_id, empresa_id)

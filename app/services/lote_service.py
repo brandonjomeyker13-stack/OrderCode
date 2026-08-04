@@ -65,3 +65,5 @@ class LoteService:
         self.db.commit()
         self.db.refresh(lote)
         return lote
+    def listar(self, empresa_id: int, offset: int, limit: int) -> list[Lote]:
+        return self.repo.list(empresa_id, offset, limit)
