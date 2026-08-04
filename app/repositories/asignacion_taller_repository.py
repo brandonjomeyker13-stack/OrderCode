@@ -1,4 +1,6 @@
 # app/repositories/asignacion_taller_repository.py
+from __future__ import annotations
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -17,6 +19,18 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
             .where(AsignacionTaller.id == id, AsignacionTaller.empresa_id == empresa_id)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def list(self, empresa_id: int, offset: int = 0, limit: int = 50) -> list[AsignacionTaller]:
+        """Override: misma precarga de taller que get_by_id, para el listado."""
+        stmt = (
+            select(AsignacionTaller)
+            .options(selectinload(AsignacionTaller.taller))
+            .where(AsignacionTaller.empresa_id == empresa_id)
+            .offset(offset)
+            .limit(limit)
+            .order_by(AsignacionTaller.id.desc())
+        )
+        return list(self.db.execute(stmt).scalars().all())
 
     def listar_por_lote(self, lote_id: int, empresa_id: int) -> list[AsignacionTaller]:
         stmt = (
