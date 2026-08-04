@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_COOKIE_NAME: str = "refresh_token"
 
     # CORS
-    CORS_ORIGINS: str = "https://ordercode.lovable.app"
+    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGIN_REGEX: str | None = None
 
     # n8n (automatización PDF + WhatsApp)
     N8N_WEBHOOK_URL: str | None = None
