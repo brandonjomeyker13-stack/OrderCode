@@ -3,9 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
+from app.core.config import settings
 from app.core.exceptions import ConflictError, UnauthorizedError
-from app.schemas.auth import LoginRequest, RegistroRequest
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -20,9 +19,7 @@ from app.models.usuario import Usuario
 from app.repositories.empresa_repository import EmpresaRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.usuario_repository import UsuarioRepository
-from app.schemas.auth import LoginRequest
-from app.schemas.empresa import EmpresaCreate
-from app.schemas.usuario import UsuarioCreate
+from app.schemas.auth import LoginRequest, RegistroRequest
 
 
 class AuthService:
@@ -57,9 +54,6 @@ class AuthService:
 
     def autenticar(self, credentials: LoginRequest) -> Usuario:
         usuario = self.usuario_repo.get_by_email(credentials.email)
-        # Mensaje idéntico si el email no existe o si la contraseña es
-        # incorrecta -- evita que un atacante use el login para enumerar
-        # qué emails están registrados.
         if usuario is None or not usuario.activo:
             raise UnauthorizedError("Credenciales inválidas")
         if not verify_password(credentials.password, usuario.password_hash):
@@ -76,7 +70,7 @@ class AuthService:
             RefreshToken(
                 usuario_id=usuario.id,
                 token_hash=hash_token(raw_refresh),
-                expires_at=datetime.now(timezone.utc) + timedelta(days=Settings().REFRESH_TOKEN_EXPIRE_DAYS),
+                expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
                 ip_origen=ip,
                 user_agent=user_agent,
             )
