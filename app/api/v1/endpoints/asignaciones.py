@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/asignaciones.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
@@ -21,8 +21,9 @@ def crear_asignacion(
     data: AsignacionTallerCreate,
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    return AsignacionTallerService(db).crear(empresa_id, data)
+    return AsignacionTallerService(db).crear(empresa_id, data, idempotency_key)
 
 
 @router.get("/{asignacion_id}", response_model=AsignacionTallerOut)
@@ -49,8 +50,9 @@ def registrar_devolucion(
     data: AsignacionTallerRegistrarDevolucion,
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    return AsignacionTallerService(db).registrar_devolucion(asignacion_id, empresa_id, data)
+    return AsignacionTallerService(db).registrar_devolucion(asignacion_id, empresa_id, data, idempotency_key)
 
 
 @router.get("", response_model=list[AsignacionTallerOut])

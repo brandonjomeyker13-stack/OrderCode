@@ -1,7 +1,9 @@
 # app/services/incidencia_service.py
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationError
+from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.enums import EstadoLote
 from app.models.incidencia import Incidencia
@@ -25,7 +27,12 @@ class IncidenciaService:
         columnas = {c.name: getattr(incidencia, c.name) for c in incidencia.__table__.columns}
         return IncidenciaOut(**columnas, asignacion=construir_asignacion_out(asignacion, merma))
 
-    def crear(self, empresa_id: int, data: IncidenciaCreate) -> IncidenciaOut:
+    def crear(self, empresa_id: int, data: IncidenciaCreate, idempotency_key: str | None = None) -> IncidenciaOut:
+        previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
+        if previo is not None:
+            _, recurso_id = previo
+            return self.obtener(recurso_id, empresa_id)
+
         asignacion = self.asignacion_repo.get_by_id(data.asignacion_id, empresa_id)
         if asignacion is None:
             raise NotFoundError("Asignación no encontrada")
@@ -53,7 +60,17 @@ class IncidenciaService:
         if lote and lote.estado != EstadoLote.CERRADO_CLIENTE:
             lote.estado = EstadoLote.EN_REVISION_INCIDENCIA
 
-        self.db.commit()
+        reclamar_clave(self.db, empresa_id, idempotency_key, "POST /incidencias", "incidencia", incidencia.id)
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
+            if previo is not None:
+                _, recurso_id = previo
+                return self.obtener(recurso_id, empresa_id)
+            raise ValidationError("No se pudo registrar la incidencia, intenta de nuevo")
+
         self.db.refresh(incidencia)
         self.db.refresh(asignacion)
         return self._con_asignacion(incidencia, asignacion, merma_total)

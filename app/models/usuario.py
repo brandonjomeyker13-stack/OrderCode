@@ -1,5 +1,7 @@
 # app/models/usuario.py
-from sqlalchemy import Boolean, Enum, ForeignKey, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -28,6 +30,11 @@ class Usuario(Base, TimestampMixin):
         default=RolUsuario.OPERADOR,
     )
     activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Bloqueo por fuerza bruta -- ver AuthService.autenticar. Se resetean
+    # ambos en cuanto el login es exitoso.
+    intentos_fallidos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    bloqueado_hasta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     empresa: Mapped["Empresa"] = relationship(
         back_populates="usuarios", foreign_keys=[empresa_id]

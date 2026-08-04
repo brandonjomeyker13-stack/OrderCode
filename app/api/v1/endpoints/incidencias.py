@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/incidencias.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
@@ -16,8 +16,9 @@ def crear_incidencia(
     data: IncidenciaCreate,
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    return IncidenciaService(db).crear(empresa_id, data)
+    return IncidenciaService(db).crear(empresa_id, data, idempotency_key)
 
 
 @router.get("", response_model=list[IncidenciaOut])

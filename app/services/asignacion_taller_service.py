@@ -1,7 +1,9 @@
 # app/services/asignacion_taller_service.py
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationError
+from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.enums import EstadoAsignacion, EstadoLote
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
@@ -51,7 +53,30 @@ class AsignacionTallerService:
         merma = self.incidencia_repo.calcular_cantidad_afectada(asignacion.id, empresa_id)
         return construir_asignacion_out(asignacion, merma)
 
-    def crear(self, empresa_id: int, data: AsignacionTallerCreate) -> AsignacionTallerOut:
+    def _confirmar_con_idempotencia(
+        self, empresa_id: int, idempotency_key: str | None, ruta: str, recurso_tipo: str, recurso_id: int
+    ) -> bool:
+        """Intenta confirmar la transacción ya armada (recurso + clave en el
+        mismo commit). Si dos requests con la misma Idempotency-Key llegan a
+        la vez, el UNIQUE constraint decide cuál gana -- la que pierde
+        descarta su escritura y el caller reusa el resultado de la ganadora
+        en vez de fallar con un error 500."""
+        reclamar_clave(self.db, empresa_id, idempotency_key, ruta, recurso_tipo, recurso_id)
+        try:
+            self.db.commit()
+            return True
+        except IntegrityError:
+            self.db.rollback()
+            return False
+
+    def crear(
+        self, empresa_id: int, data: AsignacionTallerCreate, idempotency_key: str | None = None
+    ) -> AsignacionTallerOut:
+        previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
+        if previo is not None:
+            _, recurso_id = previo
+            return self.obtener_con_merma(recurso_id, empresa_id)
+
         lote = self.lote_repo.get_by_id(data.lote_id, empresa_id)
         if lote is None:
             raise NotFoundError("Lote no encontrado")
@@ -78,7 +103,15 @@ class AsignacionTallerService:
         if lote.estado == EstadoLote.PENDIENTE_ASIGNACION:
             lote.estado = EstadoLote.ASIGNADO_A_TALLER
 
-        self.db.commit()
+        if not self._confirmar_con_idempotencia(
+            empresa_id, idempotency_key, "POST /asignaciones", "asignacion", asignacion.id
+        ):
+            previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
+            if previo is not None:
+                _, recurso_id = previo
+                return self.obtener_con_merma(recurso_id, empresa_id)
+            raise ValidationError("No se pudo completar la asignación, intenta de nuevo")
+
         self.db.refresh(asignacion)
         return self._con_merma(asignacion, empresa_id)
 
@@ -96,7 +129,11 @@ class AsignacionTallerService:
         return [self._con_merma(a, empresa_id) for a in asignaciones]
 
     def registrar_devolucion(
-        self, id: int, empresa_id: int, data: AsignacionTallerRegistrarDevolucion
+        self,
+        id: int,
+        empresa_id: int,
+        data: AsignacionTallerRegistrarDevolucion,
+        idempotency_key: str | None = None,
     ) -> AsignacionTallerOut:
         """`data.cantidad_devuelta` es lo que se devuelve EN ESTE evento (no el
         acumulado). Un taller puede entregar en varias tandas -- se suma sobre
@@ -105,9 +142,26 @@ class AsignacionTallerService:
 
         Las unidades ya registradas como merma (ver IncidenciaService.crear)
         no se pueden devolver -- se descuentan del máximo permitido aquí."""
+        previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
+        if previo is not None:
+            _, recurso_id = previo
+            return self.obtener_con_merma(recurso_id, empresa_id)
+
         asignacion = self.obtener(id, empresa_id)
         if asignacion.estado == EstadoAsignacion.ENTREGADO_COMPLETO:
             raise ValidationError("Esta asignación ya fue marcada como entregada por completo")
+
+        fecha_devolucion = data.fecha_devolucion.date()
+        if fecha_devolucion < asignacion.fecha_asignacion:
+            raise ValidationError(
+                f"La fecha de devolución ({fecha_devolucion}) no puede ser anterior a la fecha "
+                f"en que se asignó al taller ({asignacion.fecha_asignacion})"
+            )
+        if asignacion.fecha_devolucion is not None and fecha_devolucion < asignacion.fecha_devolucion.date():
+            raise ValidationError(
+                f"La fecha de devolución ({fecha_devolucion}) no puede ser anterior a la última "
+                f"devolución ya registrada ({asignacion.fecha_devolucion.date()})"
+            )
 
         merma = self.incidencia_repo.calcular_cantidad_afectada(asignacion.id, empresa_id)
         nueva_cantidad_devuelta = (asignacion.cantidad_devuelta or 0) + data.cantidad_devuelta
@@ -123,7 +177,16 @@ class AsignacionTallerService:
         recalcular_estado_asignacion(asignacion, merma)
 
         self._recalcular_estado_lote(asignacion.lote_id, empresa_id)
-        self.db.commit()
+
+        if not self._confirmar_con_idempotencia(
+            empresa_id, idempotency_key, "POST /asignaciones/{id}/devolucion", "asignacion", asignacion.id
+        ):
+            previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
+            if previo is not None:
+                _, recurso_id = previo
+                return self.obtener_con_merma(recurso_id, empresa_id)
+            raise ValidationError("No se pudo registrar la devolución, intenta de nuevo")
+
         self.db.refresh(asignacion)
         return self._con_merma(asignacion, empresa_id)
 

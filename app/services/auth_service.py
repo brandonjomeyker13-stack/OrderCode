@@ -56,8 +56,35 @@ class AuthService:
         usuario = self.usuario_repo.get_by_email(credentials.email)
         if usuario is None or not usuario.activo:
             raise UnauthorizedError("Credenciales inválidas")
+
+        ahora = datetime.now(timezone.utc)
+        bloqueado_hasta = usuario.bloqueado_hasta
+        if bloqueado_hasta is not None:
+            # Algunos backends (ej. SQLite en tests) devuelven el datetime sin
+            # tzinfo aunque la columna sea timezone=True -- siempre se escribe
+            # en UTC, así que es seguro asumir UTC si viene naive.
+            if bloqueado_hasta.tzinfo is None:
+                bloqueado_hasta = bloqueado_hasta.replace(tzinfo=timezone.utc)
+            if bloqueado_hasta > ahora:
+                minutos_restantes = int((bloqueado_hasta - ahora).total_seconds() // 60) + 1
+                raise UnauthorizedError(
+                    f"Cuenta bloqueada temporalmente por intentos fallidos. "
+                    f"Intenta de nuevo en {minutos_restantes} minuto(s)."
+                )
+
         if not verify_password(credentials.password, usuario.password_hash):
+            usuario.intentos_fallidos += 1
+            if usuario.intentos_fallidos >= settings.LOGIN_MAX_INTENTOS:
+                usuario.bloqueado_hasta = ahora + timedelta(minutes=settings.LOGIN_BLOQUEO_MINUTOS)
+                usuario.intentos_fallidos = 0
+            self.db.commit()
             raise UnauthorizedError("Credenciales inválidas")
+
+        if usuario.intentos_fallidos > 0 or usuario.bloqueado_hasta is not None:
+            usuario.intentos_fallidos = 0
+            usuario.bloqueado_hasta = None
+            self.db.commit()
+
         return usuario
 
     def emitir_tokens(self, usuario: Usuario, ip: str | None, user_agent: str | None) -> tuple[str, str]:
