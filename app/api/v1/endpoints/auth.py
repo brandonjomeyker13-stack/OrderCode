@@ -31,7 +31,7 @@ class RegistroRequest(EmpresaCreate):
     pass
 
 
-@router.post("/registro", response_model=TokenResponse, status_code=201)
+@router.post("/register", response_model=TokenResponse, status_code=201)
 def registrar(
     empresa_in: EmpresaCreate,
     admin_in: UsuarioCreate,
