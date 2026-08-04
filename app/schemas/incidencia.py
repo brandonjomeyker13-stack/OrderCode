@@ -4,6 +4,7 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import TipoIncidencia
+from app.schemas.asignacion_taller import AsignacionTallerOut
 from app.schemas.common import TimestampSchema
 
 
@@ -25,3 +26,6 @@ class IncidenciaOut(TimestampSchema):
     cantidad_afectada: int
     descripcion: str | None
     fecha: date
+    # Incluye el taller (asignacion.taller) para que el listado no requiera
+    # una segunda llamada solo para saber a qué taller pertenece la incidencia.
+    asignacion: AsignacionTallerOut

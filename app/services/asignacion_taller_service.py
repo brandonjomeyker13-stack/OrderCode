@@ -63,17 +63,23 @@ class AsignacionTallerService:
     def registrar_devolucion(
         self, id: int, empresa_id: int, data: AsignacionTallerRegistrarDevolucion
     ) -> AsignacionTaller:
+        """`data.cantidad_devuelta` es lo que se devuelve EN ESTE evento (no el
+        acumulado). Un taller puede entregar en varias tandas -- se suma sobre
+        lo ya devuelto, nunca se sobreescribe (si no, una segunda devolución
+        parcial borraría el registro de la primera)."""
         asignacion = self.obtener(id, empresa_id)
         if asignacion.estado == EstadoAsignacion.ENTREGADO_COMPLETO:
             raise ValidationError("Esta asignación ya fue marcada como entregada por completo")
-        if data.cantidad_devuelta > asignacion.cantidad_asignada:
+
+        nueva_cantidad_devuelta = (asignacion.cantidad_devuelta or 0) + data.cantidad_devuelta
+        if nueva_cantidad_devuelta > asignacion.cantidad_asignada:
             raise ValidationError("La cantidad devuelta no puede superar la cantidad asignada")
 
-        asignacion.cantidad_devuelta = data.cantidad_devuelta
+        asignacion.cantidad_devuelta = nueva_cantidad_devuelta
         asignacion.fecha_devolucion = data.fecha_devolucion
         asignacion.estado = (
             EstadoAsignacion.ENTREGADO_COMPLETO
-            if data.cantidad_devuelta == asignacion.cantidad_asignada
+            if nueva_cantidad_devuelta == asignacion.cantidad_asignada
             else EstadoAsignacion.ENTREGADO_PARCIAL
         )
 
