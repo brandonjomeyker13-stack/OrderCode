@@ -7,9 +7,8 @@ from app.core.deps import get_current_usuario
 from app.core.exceptions import UnauthorizedError
 from app.db.session import get_db
 from app.models.usuario import Usuario
-from app.schemas.auth import LoginRequest, TokenResponse
-from app.schemas.empresa import EmpresaCreate
-from app.schemas.usuario import UsuarioCreate, UsuarioOut
+from app.schemas.auth import LoginRequest, RegistroRequest, TokenResponse
+from app.schemas.usuario import UsuarioOut
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -20,18 +19,14 @@ def _set_refresh_cookie(response: Response, raw_refresh_token: str) -> None:
         key=settings.REFRESH_TOKEN_COOKIE_NAME,
         value=raw_refresh_token,
         httponly=True,
-        secure=settings.is_production,  # False en local para poder probar sin HTTPS
+        secure=settings.is_production,
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        path="/api/v1/auth",  # la cookie no viaja a ninguna otra ruta de la API
+        path="/api/v1/auth",
     )
 
 
-class RegistroRequest(EmpresaCreate):
-    pass
-
-
-@router.post("/register", response_model=TokenResponse, status_code=201)
+@router.post("/registro", response_model=TokenResponse, status_code=201)
 def registrar(
     data: RegistroRequest,
     request: Request,
