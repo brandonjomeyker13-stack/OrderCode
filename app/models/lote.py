@@ -4,17 +4,12 @@ from datetime import date
 from sqlalchemy import Date, Enum, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base 
+from app.db.base import Base
 from app.db.mixins import TimestampMixin
 from app.models.enums import EstadoLote
 
 
 class Lote(Base, TimestampMixin):
-    """
-    La 'masa general' generada en el paso de entrada/producción interna,
-    antes de repartirse entre talleres externos. Genérico: puede ser un
-    corte de tela, un lote de piezas de cuero cortadas, etc.
-    """
     __tablename__ = "lotes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -30,7 +25,11 @@ class Lote(Base, TimestampMixin):
     fecha_entrega_cliente: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     estado: Mapped[EstadoLote] = mapped_column(
-        Enum(EstadoLote, name="estado_lote_enum"),
+        Enum(
+            EstadoLote,
+            name="estado_lote_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=EstadoLote.PENDIENTE_ASIGNACION,
         index=True,

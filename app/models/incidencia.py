@@ -22,7 +22,12 @@ class Incidencia(Base, TimestampMixin):
     )
 
     tipo: Mapped[TipoIncidencia] = mapped_column(
-        Enum(TipoIncidencia, name="tipo_incidencia_enum"), nullable=False
+        Enum(
+            TipoIncidencia,
+            name="tipo_incidencia_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
     )
     cantidad_afectada: Mapped[int] = mapped_column(Integer, nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -35,12 +35,15 @@ class AsignacionTaller(Base, TimestampMixin):
     )
 
     estado: Mapped[EstadoAsignacion] = mapped_column(
-        Enum(EstadoAsignacion, name="estado_asignacion_enum"),
+        Enum(
+            EstadoAsignacion,
+            name="estado_asignacion_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=EstadoAsignacion.ASIGNADO,
         index=True,
     )
-
     lote: Mapped["Lote"] = relationship(back_populates="asignaciones")
     taller: Mapped["Taller"] = relationship()
     incidencias: Mapped[list["Incidencia"]] = relationship(
