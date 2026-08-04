@@ -33,15 +33,14 @@ class RegistroRequest(EmpresaCreate):
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 def registrar(
-    empresa_in: EmpresaCreate,
-    admin_in: UsuarioCreate,
+    data: RegistroRequest,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ):
     """Alta de un nuevo tenant: crea la empresa y su usuario admin."""
     service = AuthService(db)
-    usuario = service.registrar_empresa_y_admin(empresa_in, admin_in)
+    usuario = service.registrar_empresa_y_admin(data)
     access_token, raw_refresh = service.emitir_tokens(
         usuario, ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),

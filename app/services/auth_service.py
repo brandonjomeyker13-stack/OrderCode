@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import ConflictError, UnauthorizedError
+from app.schemas.auth import LoginRequest, RegistroRequest
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -31,20 +32,20 @@ class AuthService:
         self.usuario_repo = UsuarioRepository(db)
         self.refresh_repo = RefreshTokenRepository(db)
 
-    def registrar_empresa_y_admin(self, empresa_in: EmpresaCreate, admin_in: UsuarioCreate) -> Usuario:
+    def registrar_empresa_y_admin(self, data: RegistroRequest) -> Usuario:
         """Alta inicial de un tenant: crea la empresa y su primer usuario
         (admin) en una sola transacción atómica."""
-        if self.usuario_repo.get_by_email(admin_in.email) is not None:
+        if self.usuario_repo.get_by_email(data.email) is not None:
             raise ConflictError("Ya existe un usuario con ese email")
 
-        empresa = self.empresa_repo.create(Empresa(nombre=empresa_in.nombre))
+        empresa = self.empresa_repo.create(Empresa(nombre=data.nombre_empresa))
 
         usuario = self.usuario_repo.create(
             Usuario(
                 empresa_id=empresa.id,
-                nombre=admin_in.nombre,
-                email=admin_in.email,
-                password_hash=hash_password(admin_in.password),
+                nombre=data.nombre,
+                email=data.email,
+                password_hash=hash_password(data.password),
                 rol=RolUsuario.ADMIN,
             )
         )
