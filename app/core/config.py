@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # URL del frontend (Lovable) -- se usa para armar links en los correos
     # (ej. "restablece tu contraseña aquí"). Sin path, solo el origen.
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "https://orderscode.com/"
 
     # Google Sign-In -- Client ID del proyecto en Google Cloud Console.
     # Sin esto configurado, POST /auth/google rechaza todo (ver core/google_auth.py).
@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
 
     # CORS
-    CORS_ORIGINS: str = "http://localhost:3000"
+    CORS_ORIGINS: str = "https://orderscode.com"
     CORS_ORIGIN_REGEX: str | None = None
 
     # n8n (automatización PDF + WhatsApp)

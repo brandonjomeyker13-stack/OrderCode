@@ -42,6 +42,11 @@ class Usuario(Base, TimestampMixin):
     email_verificado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
 
+    # False solo para cuentas creadas por Google Sign-In (arrancan con un
+    # password_hash aleatorio e inutilizable) -- el front usa este flag para
+    # mandarlas a "configura tu cuenta" antes que al dashboard normal.
+    password_configurada: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     empresa: Mapped["Empresa"] = relationship(
         back_populates="usuarios", foreign_keys=[empresa_id]
     )

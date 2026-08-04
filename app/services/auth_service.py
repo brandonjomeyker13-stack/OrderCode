@@ -218,11 +218,13 @@ class AuthService:
                 nombre=nombre,
                 email=email,
                 # Password inutilizable -- esta cuenta solo entra por Google
-                # hasta que use "olvidé mi contraseña" para definir una.
+                # hasta que configure una real (POST /usuarios/me/configurar-password,
+                # el front lo detecta con password_configurada=False).
                 password_hash=hash_password(generate_refresh_token()),
                 rol=RolUsuario.ADMIN,
                 google_sub=info["sub"],
                 email_verificado=True,
+                password_configurada=False,
             )
         )
         empresa.usuario_propietario_id = usuario.id

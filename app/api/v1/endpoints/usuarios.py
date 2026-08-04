@@ -7,7 +7,13 @@ from app.api.v1.deps import get_empresa_id, get_pagination
 from app.db.session import get_db
 from app.models.usuario import Usuario
 from app.schemas.common import PaginationParams
-from app.schemas.usuario import CambioPassword, UsuarioCreate, UsuarioOut, UsuarioUpdate
+from app.schemas.usuario import (
+    CambioPassword,
+    ConfigurarPasswordInicial,
+    UsuarioCreate,
+    UsuarioOut,
+    UsuarioUpdate,
+)
 from app.services.usuario_service import UsuarioService
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
@@ -71,7 +77,26 @@ def cambiar_password(
 
         raise ForbiddenError("Solo puedes cambiar tu propia contraseña")
     UsuarioService(db).cambiar_password(usuario_id, empresa_id, data)
-    
+
+
+@router.post(
+    "/me/configurar-password",
+    status_code=204,
+    responses={422: {"description": "La cuenta ya tiene una contraseña configurada"}},
+)
+def configurar_password_inicial(
+    data: ConfigurarPasswordInicial,
+    usuario_actual: Usuario = Depends(get_current_usuario),
+    db: Session = Depends(get_db),
+):
+    """Solo para cuentas creadas por Google Sign-In (password_configurada=False
+    en UsuarioOut) -- ponen su primera contraseña real sin necesitar una
+    contraseña actual que no existe."""
+    UsuarioService(db).configurar_password_inicial(
+        usuario_actual.id, usuario_actual.empresa_id, data
+    )
+
+
 @router.delete("/{usuario_id}", status_code=204)
 def desactivar_usuario(
     usuario_id: int,

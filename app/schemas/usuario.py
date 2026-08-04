@@ -25,6 +25,13 @@ class CambioPassword(BaseModel):
     password_nueva: str = Field(min_length=8, max_length=128)
 
 
+class ConfigurarPasswordInicial(BaseModel):
+    """Para cuentas creadas por Google Sign-In (ver password_configurada en
+    UsuarioOut) -- a diferencia de CambioPassword, no pide la contraseña
+    actual porque no existe una real que el usuario conozca."""
+    password_nueva: str = Field(min_length=8, max_length=128)
+
+
 class UsuarioOut(TimestampSchema):
     """Nunca incluye password_hash. Esto es intencional: si algún día alguien
     agrega ese campo aquí por error, es una fuga de datos sensibles."""
@@ -36,3 +43,7 @@ class UsuarioOut(TimestampSchema):
     email: EmailStr
     rol: RolUsuario
     activo: bool
+    email_verificado: bool
+    # False -> el front debe mandar a esta cuenta a "configura tu cuenta"
+    # (viene de Google Sign-In y todavía no tiene contraseña real).
+    password_configurada: bool

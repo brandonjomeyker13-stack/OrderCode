@@ -2,12 +2,12 @@
 from sqlalchemy.orm import Session
 
 from app.core.email import enviar_email
-from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError
+from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError, ValidationError
 from app.core.security import hash_password, verify_password
 from app.models.usuario import Usuario
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.usuario_repository import UsuarioRepository
-from app.schemas.usuario import CambioPassword, UsuarioCreate, UsuarioUpdate
+from app.schemas.usuario import CambioPassword, ConfigurarPasswordInicial, UsuarioCreate, UsuarioUpdate
 
 
 class UsuarioService:
@@ -73,6 +73,33 @@ class UsuarioService:
             administrador de inmediato.</p>
             """,
         )
+    def configurar_password_inicial(
+        self, id: int, empresa_id: int, data: ConfigurarPasswordInicial
+    ) -> None:
+        """Para cuentas creadas por Google Sign-In: ponen su primera
+        contraseña real sin necesitar la actual (no existe una que conozcan).
+        Por eso solo se permite una vez, mientras password_configurada siga
+        en False -- después de esto, corregir la contraseña pasa por
+        cambiar_password (con la actual) o el flujo de recuperación."""
+        usuario = self.obtener(id, empresa_id)
+        if usuario.password_configurada:
+            raise ValidationError(
+                "Esta cuenta ya tiene una contraseña configurada -- usa 'cambiar contraseña'"
+            )
+        usuario.password_hash = hash_password(data.password_nueva)
+        usuario.password_configurada = True
+        self.db.commit()
+
+        enviar_email(
+            usuario.email,
+            "Configuraste una contraseña para tu cuenta",
+            f"""
+            <p>Hola {usuario.nombre},</p>
+            <p>Ya puedes iniciar sesión con tu correo y esta contraseña, además de con Google.
+            Si no fuiste tú, contacta a tu administrador de inmediato.</p>
+            """,
+        )
+
     def desactivar(self, id: int, empresa_id: int) -> None:
         """Soft-delete: nunca se borra un usuario físicamente (rompería el
         histórico de quién hizo qué). Se desactiva y se cierran sus sesiones."""
