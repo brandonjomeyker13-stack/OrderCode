@@ -148,7 +148,9 @@ class AuthService:
         )
         self.db.commit()
 
-        link = f"{settings.FRONTEND_URL}/restablecer-password?token={raw_token}"
+        # rstrip: no importa si FRONTEND_URL viene con o sin "/" al final en
+        # la variable de entorno -- nunca queda una doble barra en el link.
+        link = f"{settings.FRONTEND_URL.rstrip('/')}/restablecer?token={raw_token}"
         enviar_email(
             usuario.email,
             "Recupera tu contraseña",

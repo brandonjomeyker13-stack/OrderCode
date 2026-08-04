@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # URL del frontend (Lovable) -- se usa para armar links en los correos
     # (ej. "restablece tu contraseña aquí"). Sin path, solo el origen.
-    FRONTEND_URL: str = "https://orderscode.com/"
+    FRONTEND_URL: str = "https://orderscode.com"
 
     # Google Sign-In -- Client ID del proyecto en Google Cloud Console.
     # Sin esto configurado, POST /auth/google rechaza todo (ver core/google_auth.py).
