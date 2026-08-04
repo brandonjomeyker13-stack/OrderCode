@@ -31,7 +31,7 @@ def obtener_asignacion(
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
-    return AsignacionTallerService(db).obtener(asignacion_id, empresa_id)
+    return AsignacionTallerService(db).obtener_con_merma(asignacion_id, empresa_id)
 
 
 @router.get("/por-lote/{lote_id}", response_model=list[AsignacionTallerOut])

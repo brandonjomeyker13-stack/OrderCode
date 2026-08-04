@@ -34,3 +34,7 @@ class AsignacionTallerOut(TimestampSchema):
     fecha_devolucion: datetime | None
     estado: EstadoAsignacion
     taller: TallerOut
+    # No son columnas reales -- se calculan en el service (suma de incidencias
+    # y asignada - devuelta - merma) y nunca se derivan en el front.
+    cantidad_merma: int
+    cantidad_pendiente: int

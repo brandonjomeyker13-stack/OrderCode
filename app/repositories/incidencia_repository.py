@@ -1,7 +1,7 @@
 # app/repositories/incidencia_repository.py
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.asignacion_taller import AsignacionTaller
@@ -15,6 +15,15 @@ class IncidenciaRepository(BaseRepository[Incidencia]):
 
     def _con_asignacion(self):
         return selectinload(Incidencia.asignacion).selectinload(AsignacionTaller.taller)
+
+    def calcular_cantidad_afectada(self, asignacion_id: int, empresa_id: int) -> int:
+        """Suma de mermas (incidencias) registradas para una asignación --
+        estas unidades no vuelven al taller ni se pueden devolver."""
+        stmt = select(func.coalesce(func.sum(Incidencia.cantidad_afectada), 0)).where(
+            Incidencia.asignacion_id == asignacion_id,
+            Incidencia.empresa_id == empresa_id,
+        )
+        return self.db.execute(stmt).scalar_one()
 
     def get_by_id(self, id: int, empresa_id: int) -> Incidencia | None:
         stmt = (
