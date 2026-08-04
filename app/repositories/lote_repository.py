@@ -1,4 +1,6 @@
 # app/repositories/lote_repository.py
+from __future__ import annotations
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -29,6 +31,17 @@ class LoteRepository(BaseRepository[Lote]):
             .where(Lote.id == id, Lote.empresa_id == empresa_id)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def list(self, empresa_id: int, offset: int = 0, limit: int = 50) -> list[Lote]:
+        stmt = (
+            select(Lote)
+            .options(selectinload(Lote.tipo_producto))
+            .where(Lote.empresa_id == empresa_id)
+            .offset(offset)
+            .limit(limit)
+            .order_by(Lote.id.desc())
+        )
+        return list(self.db.execute(stmt).scalars().all())
 
     def listar_activos_por_tipo_producto(
         self, tipo_producto_id: int, empresa_id: int

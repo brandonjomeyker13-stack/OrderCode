@@ -35,24 +35,22 @@ class LoteService:
             raise NotFoundError("Lote no encontrado")
         return lote
 
+    def _con_disponibilidad(self, lote: Lote, empresa_id: int) -> LoteConDisponibilidad:
+        asignado = self.repo.calcular_cantidad_asignada(lote.id, empresa_id)
+        columnas = {c.name: getattr(lote, c.name) for c in lote.__table__.columns}
+        return LoteConDisponibilidad(
+            **columnas,
+            tipo_producto=lote.tipo_producto,
+            cantidad_asignada_total=asignado,
+            cantidad_disponible=lote.cantidad_total - asignado,
+        )
+
     def listar_activos_por_tipo_producto(
         self, tipo_producto_id: int, empresa_id: int
     ) -> list[LoteConDisponibilidad]:
         """La query central de la vista de escaneo QR en tiempo real."""
         lotes = self.repo.listar_activos_por_tipo_producto(tipo_producto_id, empresa_id)
-        resultado = []
-        for lote in lotes:
-            asignado = self.repo.calcular_cantidad_asignada(lote.id, empresa_id)
-            columnas = {c.name: getattr(lote, c.name) for c in lote.__table__.columns}
-            resultado.append(
-                LoteConDisponibilidad(
-                    **columnas,
-                    tipo_producto=lote.tipo_producto,
-                    cantidad_asignada_total=asignado,
-                    cantidad_disponible=lote.cantidad_total - asignado,
-                )
-            )
-        return resultado
+        return [self._con_disponibilidad(lote, empresa_id) for lote in lotes]
 
     def cerrar_hacia_cliente(self, id: int, empresa_id: int, fecha_entrega: date) -> Lote:
         lote = self.obtener(id, empresa_id)
@@ -65,5 +63,10 @@ class LoteService:
         self.db.commit()
         self.db.refresh(lote)
         return lote
-    def listar(self, empresa_id: int, offset: int, limit: int) -> list[Lote]:
-        return self.repo.list(empresa_id, offset, limit)
+    def listar(self, empresa_id: int, offset: int, limit: int) -> list[LoteConDisponibilidad]:
+        lotes = self.repo.list(empresa_id, offset, limit)
+        return [self._con_disponibilidad(lote, empresa_id) for lote in lotes]
+
+    def obtener_con_disponibilidad(self, id: int, empresa_id: int) -> LoteConDisponibilidad:
+        lote = self.obtener(id, empresa_id)
+        return self._con_disponibilidad(lote, empresa_id)

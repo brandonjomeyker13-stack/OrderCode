@@ -8,7 +8,7 @@ from app.core.deps import require_admin
 from app.api.v1.deps import get_empresa_id
 from app.db.session import get_db
 from app.models.usuario import Usuario
-from app.schemas.lote import LoteCreate, LoteOut
+from app.schemas.lote import LoteConDisponibilidad, LoteCreate, LoteOut
 from app.services.lote_service import LoteService
 
 router = APIRouter(prefix="/lotes", tags=["lotes"])
@@ -23,13 +23,13 @@ def crear_lote(
     return LoteService(db).crear(empresa_id, data)
 
 
-@router.get("/{lote_id}", response_model=LoteOut)
+@router.get("/{lote_id}", response_model=LoteConDisponibilidad)
 def obtener_lote(
     lote_id: int,
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
-    return LoteService(db).obtener(lote_id, empresa_id)
+    return LoteService(db).obtener_con_disponibilidad(lote_id, empresa_id)
 
 
 @router.post("/{lote_id}/cerrar-cliente", response_model=LoteOut)
@@ -44,7 +44,7 @@ def cerrar_hacia_cliente(
 from app.api.v1.deps import get_empresa_id, get_pagination
 from app.schemas.common import PaginationParams
 
-@router.get("", response_model=list[LoteOut])
+@router.get("", response_model=list[LoteConDisponibilidad])
 def listar_lotes(
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
