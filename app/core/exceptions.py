@@ -29,3 +29,14 @@ class ForbiddenError(AppError):
 
 class ValidationError(AppError):
     """-> HTTP 422 (regla de negocio violada, ej. cantidad excede disponible)"""
+
+
+class RateLimitedError(AppError):
+    """-> HTTP 429 (ej. cuenta bloqueada temporalmente por intentos fallidos
+    de login). Lleva retry_after_seconds para que main.py pueda mandar el
+    header Retry-After, que es lo que un cliente HTTP espera para saber
+    cuándo reintentar."""
+
+    def __init__(self, message: str, retry_after_seconds: int):
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(message)

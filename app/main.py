@@ -12,6 +12,7 @@ from app.core.exceptions import (
     ConflictError,
     ForbiddenError,
     NotFoundError,
+    RateLimitedError,
     UnauthorizedError,
     ValidationError,
 )
@@ -35,6 +36,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Sin esto el navegador recibe X-Total-Count pero el JS del front no
+    # puede leerlo (los headers custom no son "simples" por default en CORS).
+    expose_headers=["X-Total-Count"],
 )
 
 
@@ -45,13 +49,17 @@ _ERROR_STATUS_MAP = {
     UnauthorizedError: 401,
     ForbiddenError: 403,
     ValidationError: 422,
+    RateLimitedError: 429,
 }
 
 
 @app.exception_handler(AppError)
 def handle_app_error(request: Request, exc: AppError):
     status_code = _ERROR_STATUS_MAP.get(type(exc), 400)
-    return JSONResponse(status_code=status_code, content={"detail": exc.message})
+    headers = {}
+    if isinstance(exc, RateLimitedError):
+        headers["Retry-After"] = str(exc.retry_after_seconds)
+    return JSONResponse(status_code=status_code, content={"detail": exc.message}, headers=headers)
 
 
 @app.exception_handler(Exception)

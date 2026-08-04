@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/clientes.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
@@ -22,11 +22,14 @@ def crear_cliente(
 
 @router.get("", response_model=list[ClienteOut])
 def listar_clientes(
+    response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
-    return ClienteService(db).listar(empresa_id, pagination.offset, pagination.page_size)
+    service = ClienteService(db)
+    response.headers["X-Total-Count"] = str(service.contar(empresa_id))
+    return service.listar(empresa_id, pagination.offset, pagination.page_size)
 
 
 @router.get("/{cliente_id}", response_model=ClienteOut)

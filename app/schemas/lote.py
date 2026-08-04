@@ -15,8 +15,11 @@ class LoteCreate(BaseModel):
 
 
 class LoteUpdate(BaseModel):
-    fecha_entrega_cliente: date | None = None
-    estado: EstadoLote | None = None
+    """Corrección de un error de captura -- no cambia el estado del lote,
+    eso ya tiene sus propios flujos (asignar, devolver, cerrar_hacia_cliente)."""
+
+    cantidad_total: int | None = Field(default=None, gt=0)
+    fecha_registro: date | None = None
 
 
 class LoteOut(TimestampSchema):

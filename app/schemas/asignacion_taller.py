@@ -22,6 +22,14 @@ class AsignacionTallerRegistrarDevolucion(BaseModel):
     fecha_devolucion: datetime
 
 
+class AsignacionTallerUpdate(BaseModel):
+    """Corrección de un error de captura -- solo se permite mientras la
+    asignación sigue "pristina" (sin devolución ni merma registrada)."""
+    taller_id: int | None = None
+    cantidad_asignada: int | None = Field(default=None, gt=0)
+    fecha_asignacion: date | None = None
+
+
 class AsignacionTallerOut(TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
 

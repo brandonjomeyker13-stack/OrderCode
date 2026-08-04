@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/usuarios.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_usuario, require_admin
@@ -25,11 +25,14 @@ def crear_usuario(
 
 @router.get("", response_model=list[UsuarioOut])
 def listar_usuarios(
+    response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
-    return UsuarioService(db).listar(empresa_id, pagination.offset, pagination.page_size)
+    service = UsuarioService(db)
+    response.headers["X-Total-Count"] = str(service.contar(empresa_id))
+    return service.listar(empresa_id, pagination.offset, pagination.page_size)
 
 
 @router.get("/{usuario_id}", response_model=UsuarioOut)

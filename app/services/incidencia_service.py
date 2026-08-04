@@ -84,6 +84,9 @@ class IncidenciaService:
             for i in incidencias
         ]
 
+    def contar(self, empresa_id: int) -> int:
+        return self.repo.count(empresa_id)
+
     def obtener(self, id: int, empresa_id: int) -> IncidenciaOut:
         incidencia = self.repo.get_by_id(id, empresa_id)
         if incidencia is None:

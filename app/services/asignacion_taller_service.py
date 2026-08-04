@@ -14,6 +14,7 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerCreate,
     AsignacionTallerOut,
     AsignacionTallerRegistrarDevolucion,
+    AsignacionTallerUpdate,
 )
 
 
@@ -52,6 +53,13 @@ class AsignacionTallerService:
     def _con_merma(self, asignacion: AsignacionTaller, empresa_id: int) -> AsignacionTallerOut:
         merma = self.incidencia_repo.calcular_cantidad_afectada(asignacion.id, empresa_id)
         return construir_asignacion_out(asignacion, merma)
+
+    def _es_pristina(self, asignacion: AsignacionTaller, empresa_id: int) -> bool:
+        """Sin devolución ni merma registrada -- nada más depende todavía de
+        sus cantidades/fechas, así que se puede corregir o borrar sin dejar
+        el historial inconsistente."""
+        merma = self.incidencia_repo.calcular_cantidad_afectada(asignacion.id, empresa_id)
+        return (asignacion.cantidad_devuelta or 0) == 0 and merma == 0
 
     def _confirmar_con_idempotencia(
         self, empresa_id: int, idempotency_key: str | None, ruta: str, recurso_tipo: str, recurso_id: int
@@ -213,3 +221,69 @@ class AsignacionTallerService:
     def listar(self, empresa_id: int, offset: int, limit: int) -> list[AsignacionTallerOut]:
         asignaciones = self.repo.list(empresa_id, offset, limit)
         return [self._con_merma(a, empresa_id) for a in asignaciones]
+
+    def contar(self, empresa_id: int) -> int:
+        return self.repo.count(empresa_id)
+
+    def actualizar(
+        self, id: int, empresa_id: int, data: AsignacionTallerUpdate
+    ) -> AsignacionTallerOut:
+        """Corrección de un error de captura -- ver AsignacionTallerUpdate."""
+        asignacion = self.obtener(id, empresa_id)
+        if not self._es_pristina(asignacion, empresa_id):
+            raise ValidationError(
+                "No se puede corregir: esta asignación ya tiene devolución o merma registrada"
+            )
+
+        lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
+
+        if data.taller_id is not None and data.taller_id != asignacion.taller_id:
+            taller = self.taller_repo.get_by_id(data.taller_id, empresa_id)
+            if taller is None:
+                raise NotFoundError("Taller no encontrado")
+            if not taller.activo:
+                raise ValidationError("El taller seleccionado está inactivo")
+            asignacion.taller_id = data.taller_id
+
+        if data.cantidad_asignada is not None:
+            asignado_total = self.lote_repo.calcular_cantidad_asignada(lote.id, empresa_id)
+            disponible_sin_esta = lote.cantidad_total - (asignado_total - asignacion.cantidad_asignada)
+            if data.cantidad_asignada > disponible_sin_esta:
+                raise ValidationError(
+                    f"La cantidad excede lo disponible en el lote "
+                    f"({disponible_sin_esta} unidades restantes)"
+                )
+            asignacion.cantidad_asignada = data.cantidad_asignada
+
+        if data.fecha_asignacion is not None:
+            if data.fecha_asignacion < lote.fecha_registro:
+                raise ValidationError(
+                    f"La fecha de asignación ({data.fecha_asignacion}) no puede ser anterior a "
+                    f"la fecha de registro del lote ({lote.fecha_registro})"
+                )
+            asignacion.fecha_asignacion = data.fecha_asignacion
+
+        self.db.commit()
+        self.db.refresh(asignacion)
+        return self._con_merma(asignacion, empresa_id)
+
+    def eliminar(self, id: int, empresa_id: int) -> None:
+        """Borrado físico, solo permitido mientras la asignación sigue
+        "pristina". Si el lote se queda sin ninguna asignación, revierte su
+        estado a pendiente_asignacion (deshace la transición que hizo `crear`)."""
+        asignacion = self.obtener(id, empresa_id)
+        if not self._es_pristina(asignacion, empresa_id):
+            raise ValidationError(
+                "No se puede eliminar: esta asignación ya tiene devolución o merma registrada"
+            )
+
+        lote_id = asignacion.lote_id
+        self.db.delete(asignacion)
+        self.db.flush()
+
+        if not self.repo.listar_por_lote(lote_id, empresa_id):
+            lote = self.lote_repo.get_by_id(lote_id, empresa_id)
+            if lote and lote.estado == EstadoLote.ASIGNADO_A_TALLER:
+                lote.estado = EstadoLote.PENDIENTE_ASIGNACION
+
+        self.db.commit()

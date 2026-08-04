@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/incidencias.py
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
@@ -23,11 +23,14 @@ def crear_incidencia(
 
 @router.get("", response_model=list[IncidenciaOut])
 def listar_incidencias(
+    response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
-    return IncidenciaService(db).listar(empresa_id, pagination.offset, pagination.page_size)
+    service = IncidenciaService(db)
+    response.headers["X-Total-Count"] = str(service.contar(empresa_id))
+    return service.listar(empresa_id, pagination.offset, pagination.page_size)
 
 
 @router.get("/{incidencia_id}", response_model=IncidenciaOut)

@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/talleres.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_admin
@@ -25,11 +25,14 @@ def crear_taller(
 
 @router.get("", response_model=list[TallerOut])
 def listar_talleres(
+    response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
-    return TallerService(db).listar(empresa_id, pagination.offset, pagination.page_size)
+    service = TallerService(db)
+    response.headers["X-Total-Count"] = str(service.contar(empresa_id))
+    return service.listar(empresa_id, pagination.offset, pagination.page_size)
 
 
 @router.get("/{taller_id}", response_model=TallerOut)

@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/tipos_producto.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_admin
@@ -27,11 +27,14 @@ def crear_tipo_producto(
 
 @router.get("", response_model=list[TipoProductoOut])
 def listar_tipos_producto(
+    response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
-    return TipoProductoService(db).listar(empresa_id, pagination.offset, pagination.page_size)
+    service = TipoProductoService(db)
+    response.headers["X-Total-Count"] = str(service.contar(empresa_id))
+    return service.listar(empresa_id, pagination.offset, pagination.page_size)
 
 
 @router.get("/{tipo_producto_id}", response_model=TipoProductoOut)

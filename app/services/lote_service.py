@@ -3,12 +3,13 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.enums import EstadoLote
 from app.models.lote import Lote
+from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.lote_repository import LoteRepository
 from app.repositories.tipo_producto_repository import TipoProductoRepository
-from app.schemas.lote import LoteConDisponibilidad, LoteCreate
+from app.schemas.lote import LoteConDisponibilidad, LoteCreate, LoteUpdate
 
 
 class LoteService:
@@ -16,6 +17,7 @@ class LoteService:
         self.db = db
         self.repo = LoteRepository(db)
         self.tipo_producto_repo = TipoProductoRepository(db)
+        self.asignacion_repo = AsignacionTallerRepository(db)
 
     def crear(self, empresa_id: int, data: LoteCreate) -> Lote:
         tipo_producto = self.tipo_producto_repo.get_by_id(data.tipo_producto_id, empresa_id)
@@ -67,6 +69,49 @@ class LoteService:
         lotes = self.repo.list(empresa_id, offset, limit)
         return [self._con_disponibilidad(lote, empresa_id) for lote in lotes]
 
+    def contar(self, empresa_id: int) -> int:
+        return self.repo.count(empresa_id)
+
     def obtener_con_disponibilidad(self, id: int, empresa_id: int) -> LoteConDisponibilidad:
         lote = self.obtener(id, empresa_id)
         return self._con_disponibilidad(lote, empresa_id)
+
+    def actualizar(self, id: int, empresa_id: int, data: LoteUpdate) -> LoteConDisponibilidad:
+        """Corrección de un error de captura -- no toca el estado del lote."""
+        lote = self.obtener(id, empresa_id)
+
+        if data.cantidad_total is not None:
+            ya_asignado = self.repo.calcular_cantidad_asignada(lote.id, empresa_id)
+            if data.cantidad_total < ya_asignado:
+                raise ValidationError(
+                    f"No se puede bajar la cantidad total a {data.cantidad_total}: ya hay "
+                    f"{ya_asignado} unidades asignadas a talleres"
+                )
+            lote.cantidad_total = data.cantidad_total
+
+        if data.fecha_registro is not None:
+            asignaciones = self.asignacion_repo.listar_por_lote(lote.id, empresa_id)
+            primera_asignacion = min((a.fecha_asignacion for a in asignaciones), default=None)
+            if primera_asignacion is not None and data.fecha_registro > primera_asignacion:
+                raise ValidationError(
+                    f"La fecha de registro ({data.fecha_registro}) no puede ser posterior a la "
+                    f"fecha en que ya se asignó a un taller ({primera_asignacion})"
+                )
+            lote.fecha_registro = data.fecha_registro
+
+        self.db.commit()
+        self.db.refresh(lote)
+        return self._con_disponibilidad(lote, empresa_id)
+
+    def eliminar(self, id: int, empresa_id: int) -> None:
+        """Borrado físico, solo permitido si el lote todavía no tiene ninguna
+        asignación -- si ya tiene, es historial real y no se debe poder
+        destruir con un DELETE (la relación es cascade, la DB no lo
+        bloquearía sola)."""
+        lote = self.obtener(id, empresa_id)
+        if self.asignacion_repo.listar_por_lote(lote.id, empresa_id):
+            raise ConflictError(
+                "No se puede eliminar: este lote ya tiene asignaciones a talleres registradas"
+            )
+        self.db.delete(lote)
+        self.db.commit()

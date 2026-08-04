@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.exceptions import ConflictError, UnauthorizedError
+from app.core.exceptions import ConflictError, RateLimitedError, UnauthorizedError
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -66,10 +66,12 @@ class AuthService:
             if bloqueado_hasta.tzinfo is None:
                 bloqueado_hasta = bloqueado_hasta.replace(tzinfo=timezone.utc)
             if bloqueado_hasta > ahora:
-                minutos_restantes = int((bloqueado_hasta - ahora).total_seconds() // 60) + 1
-                raise UnauthorizedError(
+                segundos_restantes = int((bloqueado_hasta - ahora).total_seconds()) + 1
+                minutos_restantes = -(-segundos_restantes // 60)  # ceil sin importar float
+                raise RateLimitedError(
                     f"Cuenta bloqueada temporalmente por intentos fallidos. "
-                    f"Intenta de nuevo en {minutos_restantes} minuto(s)."
+                    f"Intenta de nuevo en {minutos_restantes} minuto(s).",
+                    retry_after_seconds=segundos_restantes,
                 )
 
         if not verify_password(credentials.password, usuario.password_hash):

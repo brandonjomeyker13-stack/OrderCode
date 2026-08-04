@@ -36,6 +36,9 @@ class UsuarioService:
     def listar(self, empresa_id: int, offset: int, limit: int) -> list[Usuario]:
         return self.repo.list(empresa_id, offset, limit)
 
+    def contar(self, empresa_id: int) -> int:
+        return self.repo.count(empresa_id)
+
     def obtener(self, id: int, empresa_id: int) -> Usuario:
         usuario = self.repo.get_by_id(id, empresa_id)
         if usuario is None:

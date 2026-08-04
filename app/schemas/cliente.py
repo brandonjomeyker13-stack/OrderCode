@@ -6,13 +6,13 @@ from app.schemas.common import TimestampSchema
 
 class ClienteCreate(BaseModel):
     nombre: str = Field(min_length=2, max_length=150)
-    telefono: str | None = Field(default=None, max_length=20)
+    telefono: str | None = Field(default=None, min_length=7, max_length=20)
     email: EmailStr | None = None
 
 
 class ClienteUpdate(BaseModel):
     nombre: str | None = Field(default=None, min_length=2, max_length=150)
-    telefono: str | None = Field(default=None, max_length=20)
+    telefono: str | None = Field(default=None, min_length=7, max_length=20)
     email: EmailStr | None = None
     activo: bool | None = None
 

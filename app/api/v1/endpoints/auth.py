@@ -44,7 +44,14 @@ def registrar(
     return TokenResponse(access_token=access_token, usuario=UsuarioOut.model_validate(usuario))
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    responses={
+        401: {"description": "Credenciales inválidas"},
+        429: {"description": "Cuenta bloqueada temporalmente por intentos fallidos"},
+    },
+)
 def login(
     credentials: LoginRequest,
     request: Request,
