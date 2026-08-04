@@ -7,7 +7,14 @@ from app.core.deps import get_current_usuario
 from app.core.exceptions import UnauthorizedError
 from app.db.session import get_db
 from app.models.usuario import Usuario
-from app.schemas.auth import LoginRequest, RegistroRequest, TokenResponse
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    GoogleAuthRequest,
+    LoginRequest,
+    RegistroRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+)
 from app.schemas.usuario import UsuarioOut
 from app.services.auth_service import AuthService
 
@@ -66,6 +73,45 @@ def login(
     )
     _set_refresh_cookie(response, raw_refresh)
     return TokenResponse(access_token=access_token, usuario=UsuarioOut.model_validate(usuario))
+
+
+@router.post(
+    "/google",
+    response_model=TokenResponse,
+    responses={401: {"description": "Token de Google inválido o correo no verificado"}},
+)
+def login_con_google(
+    data: GoogleAuthRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Recibe el `id_token` (credential) que entrega Google Identity Services
+    en el front -- no un authorization code de OAuth clásico."""
+    service = AuthService(db)
+    usuario = service.autenticar_con_google(data.id_token, data.nombre_empresa)
+    access_token, raw_refresh = service.emitir_tokens(
+        usuario, ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    _set_refresh_cookie(response, raw_refresh)
+    return TokenResponse(access_token=access_token, usuario=UsuarioOut.model_validate(usuario))
+
+
+@router.post("/forgot-password", status_code=204)
+def olvide_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Siempre responde 204 exista o no el correo -- evita enumeración de
+    cuentas. Si existe, se manda el enlace por correo (ver AuthService)."""
+    AuthService(db).iniciar_recuperacion_password(data.email)
+
+
+@router.post(
+    "/reset-password",
+    status_code=204,
+    responses={401: {"description": "Enlace inválido o expirado"}},
+)
+def restablecer_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    AuthService(db).restablecer_password(data.token, data.password_nueva)
 
 
 @router.post("/refresh", response_model=TokenResponse)

@@ -36,6 +36,12 @@ class Usuario(Base, TimestampMixin):
     intentos_fallidos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     bloqueado_hasta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Google Sign-In -- ver AuthService.autenticar_con_google. email_verificado
+    # se marca True al confirmar con Google (nunca con registro por password
+    # solo, no hay flujo de verificación por link de correo todavía).
+    email_verificado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+
     empresa: Mapped["Empresa"] = relationship(
         back_populates="usuarios", foreign_keys=[empresa_id]
     )

@@ -26,3 +26,19 @@ class TokenResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password_nueva: str = Field(min_length=8, max_length=128)
+
+
+class GoogleAuthRequest(BaseModel):
+    """`id_token` es el credential que devuelve Google Identity Services en
+    el front (no un access_token de OAuth clásico)."""
+    id_token: str
+    nombre_empresa: str | None = Field(default=None, min_length=2, max_length=150)

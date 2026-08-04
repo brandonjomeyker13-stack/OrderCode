@@ -1,6 +1,7 @@
 # app/services/usuario_service.py
 from sqlalchemy.orm import Session
 
+from app.core.email import enviar_email
 from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError
 from app.core.security import hash_password, verify_password
 from app.models.usuario import Usuario
@@ -62,6 +63,16 @@ class UsuarioService:
         # acceso con la contraseña vieja, queda fuera de inmediato.
         self.refresh_repo.revocar_todos_de_usuario(usuario.id)
         self.db.commit()
+
+        enviar_email(
+            usuario.email,
+            "Tu contraseña fue cambiada",
+            f"""
+            <p>Hola {usuario.nombre},</p>
+            <p>Tu contraseña se cambió correctamente. Si no fuiste tú, contacta a tu
+            administrador de inmediato.</p>
+            """,
+        )
     def desactivar(self, id: int, empresa_id: int) -> None:
         """Soft-delete: nunca se borra un usuario físicamente (rompería el
         histórico de quién hizo qué). Se desactiva y se cierran sus sesiones."""

@@ -39,6 +39,29 @@ class Settings(BaseSettings):
     LOGIN_MAX_INTENTOS: int = 5
     LOGIN_BLOQUEO_MINUTOS: int = 15
 
+    # URL del frontend (Lovable) -- se usa para armar links en los correos
+    # (ej. "restablece tu contraseña aquí"). Sin path, solo el origen.
+    FRONTEND_URL: str = "http://localhost:3000"
+
+    # Google Sign-In -- Client ID del proyecto en Google Cloud Console.
+    # Sin esto configurado, POST /auth/google rechaza todo (ver core/google_auth.py).
+    GOOGLE_CLIENT_ID: str | None = None
+
+    # Correo transaccional (recuperar contraseña, aviso de cambio de
+    # contraseña) -- SMTP genérico, funciona con cualquier proveedor.
+    # Si SMTP_HOST no está configurado, el envío se omite (log de aviso) en
+    # vez de fallar -- útil en desarrollo sin credenciales reales todavía.
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = True
+    SMTP_FROM_EMAIL: str = "no-reply@localhost"
+    SMTP_FROM_NAME: str = "Digitalización Producción"
+
+    # Recuperación de contraseña
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"
     CORS_ORIGIN_REGEX: str | None = None
