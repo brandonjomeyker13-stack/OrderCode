@@ -36,6 +36,13 @@ def get_current_usuario(
     if usuario is None or not usuario.activo:
         raise UnauthorizedError("Usuario no válido")
 
+    # Se revisa en cada request (no solo al iniciar sesión) para que pausar
+    # una empresa por falta de pago tenga efecto de inmediato, incluso para
+    # quien ya tenía una sesión abierta -- no hay que esperar a que expire
+    # su access token (hasta 30 min) para que deje de poder usar la API.
+    if not usuario.empresa.activo:
+        raise ForbiddenError("El acceso de tu empresa está pausado. Contacta al administrador de tu cuenta.")
+
     return usuario
 
 

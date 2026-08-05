@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.email import enviar_email
-from app.core.exceptions import ConflictError, RateLimitedError, UnauthorizedError
+from app.core.exceptions import ConflictError, ForbiddenError, RateLimitedError, UnauthorizedError
 from app.core.google_auth import verificar_id_token_google
 from app.core.security import (
     create_access_token,
@@ -86,6 +86,11 @@ class AuthService:
                 usuario.intentos_fallidos = 0
             self.db.commit()
             raise UnauthorizedError("Credenciales inválidas")
+
+        if not usuario.empresa.activo:
+            raise ForbiddenError(
+                "El acceso de tu empresa está pausado. Contacta al administrador de tu cuenta."
+            )
 
         if usuario.intentos_fallidos > 0 or usuario.bloqueado_hasta is not None:
             usuario.intentos_fallidos = 0
