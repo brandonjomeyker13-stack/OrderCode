@@ -41,7 +41,9 @@ def get_current_usuario(
     # quien ya tenía una sesión abierta -- no hay que esperar a que expire
     # su access token (hasta 30 min) para que deje de poder usar la API.
     if not usuario.empresa.activo:
-        raise ForbiddenError("El acceso de tu empresa está pausado. Contacta al administrador de tu cuenta.")
+        raise ForbiddenError(
+            "El acceso de tu empresa aún no está activo. Contacta al administrador para activarlo."
+        )
 
     return usuario
 

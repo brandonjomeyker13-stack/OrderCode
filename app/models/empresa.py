@@ -11,7 +11,11 @@ class Empresa(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(150), nullable=False)
-    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # False por defecto a propósito: toda empresa nueva (registro normal o
+    # Google Sign-In) arranca pausada hasta que un admin la active a mano
+    # tras confirmar el pago -- sin esto, cualquiera podía crear una cuenta
+    # y usarla sin pagar, y la única defensa era desactivar después.
+    activo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # FK circular resuelta con use_alter: usuarios.empresa_id apunta a esta
     # tabla, y esta columna apunta de vuelta al usuario que la creó.

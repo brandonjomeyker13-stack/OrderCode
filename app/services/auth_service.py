@@ -89,7 +89,7 @@ class AuthService:
 
         if not usuario.empresa.activo:
             raise ForbiddenError(
-                "El acceso de tu empresa está pausado. Contacta al administrador de tu cuenta."
+                "El acceso de tu empresa aún no está activo. Contacta al administrador para activarlo."
             )
 
         if usuario.intentos_fallidos > 0 or usuario.bloqueado_hasta is not None:
