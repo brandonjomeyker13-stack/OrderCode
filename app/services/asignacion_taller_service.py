@@ -7,8 +7,10 @@ from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.enums import EstadoAsignacion, EstadoLote
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
+from app.repositories.empresa_repository import EmpresaRepository
 from app.repositories.incidencia_repository import IncidenciaRepository
 from app.repositories.lote_repository import LoteRepository
+from app.repositories.notificacion_whatsapp_repository import NotificacionWhatsappRepository
 from app.repositories.taller_repository import TallerRepository
 from app.schemas.asignacion_taller import (
     AsignacionTallerCreate,
@@ -16,12 +18,16 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerRegistrarDevolucion,
     AsignacionTallerUpdate,
 )
+from app.services.notificacion_taller_service import notificar_asignacion_por_whatsapp
 
 
-def construir_asignacion_out(asignacion: AsignacionTaller, merma: int) -> AsignacionTallerOut:
-    """Punto único donde se arma la salida con merma/pendiente -- lo usan
-    tanto AsignacionTallerService como IncidenciaService (para anidar la
-    asignación dentro de IncidenciaOut), así los dos quedan calculados igual."""
+def construir_asignacion_out(
+    asignacion: AsignacionTaller, merma: int, notificado: bool
+) -> AsignacionTallerOut:
+    """Punto único donde se arma la salida con merma/pendiente/notificación
+    -- lo usan tanto AsignacionTallerService como IncidenciaService (para
+    anidar la asignación dentro de IncidenciaOut), así los dos quedan
+    calculados igual."""
     devuelta = asignacion.cantidad_devuelta or 0
     columnas = {c.name: getattr(asignacion, c.name) for c in asignacion.__table__.columns}
     return AsignacionTallerOut(
@@ -29,6 +35,7 @@ def construir_asignacion_out(asignacion: AsignacionTaller, merma: int) -> Asigna
         taller=asignacion.taller,
         cantidad_merma=merma,
         cantidad_pendiente=asignacion.cantidad_asignada - devuelta - merma,
+        notificacion_whatsapp_enviada=notificado,
     )
 
 
@@ -49,10 +56,13 @@ class AsignacionTallerService:
         self.lote_repo = LoteRepository(db)
         self.taller_repo = TallerRepository(db)
         self.incidencia_repo = IncidenciaRepository(db)
+        self.empresa_repo = EmpresaRepository(db)
+        self.notificacion_repo = NotificacionWhatsappRepository(db)
 
     def _con_merma(self, asignacion: AsignacionTaller, empresa_id: int) -> AsignacionTallerOut:
         merma = self.incidencia_repo.calcular_cantidad_afectada(asignacion.id, empresa_id)
-        return construir_asignacion_out(asignacion, merma)
+        notificado = self.notificacion_repo.fue_exitosa(asignacion.id, empresa_id)
+        return construir_asignacion_out(asignacion, merma, notificado)
 
     def _es_pristina(self, asignacion: AsignacionTaller, empresa_id: int) -> bool:
         """Sin devolución ni merma registrada -- nada más depende todavía de
@@ -121,6 +131,10 @@ class AsignacionTallerService:
             raise ValidationError("No se pudo completar la asignación, intenta de nuevo")
 
         self.db.refresh(asignacion)
+
+        empresa = self.empresa_repo.get_by_id(empresa_id)
+        notificar_asignacion_por_whatsapp(self.db, empresa_id, asignacion, lote, taller, empresa.nombre)
+
         return self._con_merma(asignacion, empresa_id)
 
     def obtener(self, id: int, empresa_id: int) -> AsignacionTaller:
@@ -287,3 +301,16 @@ class AsignacionTallerService:
                 lote.estado = EstadoLote.PENDIENTE_ASIGNACION
 
         self.db.commit()
+
+    def reenviar_notificacion(self, id: int, empresa_id: int) -> AsignacionTallerOut:
+        """Reintenta manualmente el envío de la ficha técnica -- útil si
+        falló la primera vez (credenciales mal puestas, teléfono incorrecto
+        ya corregido, etc.) o si la asignación se creó antes de configurar
+        WhatsApp por primera vez."""
+        asignacion = self.obtener(id, empresa_id)
+        lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
+        empresa = self.empresa_repo.get_by_id(empresa_id)
+        notificar_asignacion_por_whatsapp(
+            self.db, empresa_id, asignacion, lote, asignacion.taller, empresa.nombre
+        )
+        return self._con_merma(asignacion, empresa_id)

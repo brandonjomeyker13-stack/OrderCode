@@ -63,9 +63,18 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "https://orderscode.com"
     CORS_ORIGIN_REGEX: str | None = None
 
-    # n8n (automatización PDF + WhatsApp)
-    N8N_WEBHOOK_URL: str | None = None
-    N8N_WEBHOOK_SECRET: str | None = None
+    # WhatsApp Cloud API (Meta) -- envío de la ficha técnica en PDF al taller
+    # cuando se le asigna un lote. Sin WHATSAPP_ACCESS_TOKEN, el envío se
+    # omite (log de aviso), igual que con los correos.
+    WHATSAPP_PHONE_NUMBER_ID: str | None = None
+    WHATSAPP_ACCESS_TOKEN: str | None = None
+    WHATSAPP_TEMPLATE_NAME: str | None = None
+    WHATSAPP_TEMPLATE_LANGUAGE: str = "es"
+    WHATSAPP_API_VERSION: str = "v20.0"
+    # Se antepone a un teléfono que no venga ya con código de país (ver
+    # core/whatsapp.py) -- 57 = Colombia, cámbialo si tus talleres son de
+    # otro país.
+    WHATSAPP_DEFAULT_COUNTRY_CODE: str = "57"
 
     @property
     def cors_origins_list(self) -> list[str]:

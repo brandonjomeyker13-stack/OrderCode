@@ -26,3 +26,8 @@ class TipoIncidencia(str, enum.Enum):
     PRODUCTO_DANADO = "producto_danado"
     MATERIA_PRIMA_DANADA = "materia_prima_danada"
     OTRO = "otro"
+
+
+class EstadoNotificacion(str, enum.Enum):
+    ENVIADO = "enviado"
+    FALLIDO = "fallido"

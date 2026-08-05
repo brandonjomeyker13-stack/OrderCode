@@ -17,6 +17,7 @@ from app.models.cliente import Cliente
 from app.models.refresh_token import RefreshToken
 from app.models.idempotency_key import IdempotencyKey
 from app.models.password_reset_token import PasswordResetToken
+from app.models.notificacion_whatsapp import NotificacionWhatsapp
 
 __all__ = [
     "Empresa",
@@ -31,4 +32,5 @@ __all__ = [
     "RefreshToken",
     "IdempotencyKey",
     "PasswordResetToken",
+    "NotificacionWhatsapp",
 ]

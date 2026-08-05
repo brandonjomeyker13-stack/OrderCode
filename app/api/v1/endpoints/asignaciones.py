@@ -59,6 +59,19 @@ def eliminar_asignacion(
     AsignacionTallerService(db).eliminar(asignacion_id, empresa_id)
 
 
+@router.post("/{asignacion_id}/reenviar-notificacion", response_model=AsignacionTallerOut)
+def reenviar_notificacion(
+    asignacion_id: int,
+    empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Reintenta manualmente el envío de la ficha técnica por WhatsApp --
+    revisa `notificacion_whatsapp_enviada` en la respuesta para confirmar
+    si esta vez sí funcionó."""
+    return AsignacionTallerService(db).reenviar_notificacion(asignacion_id, empresa_id)
+
+
 @router.get("/por-lote/{lote_id}", response_model=list[AsignacionTallerOut])
 def listar_por_lote(
     lote_id: int,

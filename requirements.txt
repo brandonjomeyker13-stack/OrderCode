@@ -20,3 +20,4 @@ google-auth==2.56.2
 # --- Utilidades ---
 python-multipart==0.0.20
 requests==2.34.2
+reportlab==5.0.0

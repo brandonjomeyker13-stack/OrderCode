@@ -10,6 +10,7 @@ from app.models.incidencia import Incidencia
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.incidencia_repository import IncidenciaRepository
 from app.repositories.lote_repository import LoteRepository
+from app.repositories.notificacion_whatsapp_repository import NotificacionWhatsappRepository
 from app.schemas.incidencia import IncidenciaCreate, IncidenciaOut
 from app.services.asignacion_taller_service import construir_asignacion_out, recalcular_estado_asignacion
 
@@ -20,12 +21,16 @@ class IncidenciaService:
         self.repo = IncidenciaRepository(db)
         self.asignacion_repo = AsignacionTallerRepository(db)
         self.lote_repo = LoteRepository(db)
+        self.notificacion_repo = NotificacionWhatsappRepository(db)
 
     def _con_asignacion(
-        self, incidencia: Incidencia, asignacion: AsignacionTaller, merma: int
+        self, incidencia: Incidencia, asignacion: AsignacionTaller, merma: int, empresa_id: int
     ) -> IncidenciaOut:
+        notificado = self.notificacion_repo.fue_exitosa(asignacion.id, empresa_id)
         columnas = {c.name: getattr(incidencia, c.name) for c in incidencia.__table__.columns}
-        return IncidenciaOut(**columnas, asignacion=construir_asignacion_out(asignacion, merma))
+        return IncidenciaOut(
+            **columnas, asignacion=construir_asignacion_out(asignacion, merma, notificado)
+        )
 
     def crear(self, empresa_id: int, data: IncidenciaCreate, idempotency_key: str | None = None) -> IncidenciaOut:
         previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
@@ -73,13 +78,16 @@ class IncidenciaService:
 
         self.db.refresh(incidencia)
         self.db.refresh(asignacion)
-        return self._con_asignacion(incidencia, asignacion, merma_total)
+        return self._con_asignacion(incidencia, asignacion, merma_total, empresa_id)
 
     def listar(self, empresa_id: int, offset: int, limit: int) -> list[IncidenciaOut]:
         incidencias = self.repo.list(empresa_id, offset, limit)
         return [
             self._con_asignacion(
-                i, i.asignacion, self.repo.calcular_cantidad_afectada(i.asignacion_id, empresa_id)
+                i,
+                i.asignacion,
+                self.repo.calcular_cantidad_afectada(i.asignacion_id, empresa_id),
+                empresa_id,
             )
             for i in incidencias
         ]
@@ -92,4 +100,4 @@ class IncidenciaService:
         if incidencia is None:
             raise NotFoundError("Incidencia no encontrada")
         merma = self.repo.calcular_cantidad_afectada(incidencia.asignacion_id, empresa_id)
-        return self._con_asignacion(incidencia, incidencia.asignacion, merma)
+        return self._con_asignacion(incidencia, incidencia.asignacion, merma, empresa_id)

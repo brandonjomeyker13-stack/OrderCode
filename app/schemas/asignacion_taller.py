@@ -46,3 +46,7 @@ class AsignacionTallerOut(TimestampSchema):
     # y asignada - devuelta - merma) y nunca se derivan en el front.
     cantidad_merma: int
     cantidad_pendiente: int
+    # True solo si el ÚLTIMO intento de mandar la ficha técnica por WhatsApp
+    # fue exitoso -- False también cuando todavía no se ha intentado. Si es
+    # False, el front puede ofrecer POST /asignaciones/{id}/reenviar-notificacion.
+    notificacion_whatsapp_enviada: bool
