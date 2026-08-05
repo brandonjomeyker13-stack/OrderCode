@@ -48,16 +48,13 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str | None = None
 
     # Correo transaccional (recuperar contraseña, aviso de cambio de
-    # contraseña) -- SMTP genérico, funciona con cualquier proveedor.
-    # Si SMTP_HOST no está configurado, el envío se omite (log de aviso) en
-    # vez de fallar -- útil en desarrollo sin credenciales reales todavía.
-    SMTP_HOST: str | None = None
-    SMTP_PORT: int = 587
-    SMTP_USER: str | None = None
-    SMTP_PASSWORD: str | None = None
-    SMTP_USE_TLS: bool = True
-    SMTP_FROM_EMAIL: str = "no-reply@localhost"
-    SMTP_FROM_NAME: str = "Digitalización Producción"
+    # contraseña) -- API HTTP de Resend, no SMTP: Render bloquea el puerto
+    # SMTP saliente (confirmado por TimeoutError en producción), pero HTTPS
+    # normal sí funciona. Si RESEND_API_KEY no está configurada, el envío se
+    # omite (log de aviso) en vez de fallar -- útil en desarrollo.
+    RESEND_API_KEY: str | None = None
+    EMAIL_FROM_EMAIL: str = "no-reply@localhost"
+    EMAIL_FROM_NAME: str = "Digitalización Producción"
 
     # Recuperación de contraseña
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
