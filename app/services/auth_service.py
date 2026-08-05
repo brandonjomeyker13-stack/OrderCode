@@ -109,6 +109,9 @@ class AuthService:
                 user_agent=user_agent,
             )
         )
+        # Limpieza oportunista de tokens vencidos/revocados -- así la tabla
+        # no crece sin límite, sin necesitar un cron ni un servicio aparte.
+        self.refresh_repo.eliminar_vencidos()
         self.db.commit()
         return access_token, raw_refresh
 
