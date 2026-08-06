@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # 30 días a propósito: con el desbloqueo por huella en el frontend, la
+    # idea es que solo haga falta volver a meter la contraseña completa una
+    # vez al mes (alineado con el ciclo de pago), no cada semana.
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     REFRESH_TOKEN_COOKIE_NAME: str = "refresh_token"
 
     # Bloqueo de cuenta por fuerza bruta en /auth/login
