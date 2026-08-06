@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    env:
+      # La configuración de la app exige estas dos variables al importarse.
+      # En CI no hay .env, así que se inyectan aquí con valores de mentira:
+      # los tests corren contra SQLite en memoria y nunca tocan esta URL, y
+      # la clave solo tiene que existir para poder firmar tokens de prueba.
+      DATABASE_URL: sqlite:///./ci.db
+      JWT_SECRET_KEY: clave-solo-para-ci-no-se-usa-en-ningun-entorno-real
+      DEBUG: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Tests
+        run: pytest -q
+
+      # Atrapa el olvido más fácil de cometer: cambiar un modelo y no generar
+      # la migración. Se aplica todo el historial sobre una base vacía y luego
+      # se compara contra los modelos; si algo no cuadra, falla acá y no en
+      # producción.
+      - name: Migraciones al día con los modelos
+        run: |
+          alembic upgrade head
+          alembic check

@@ -49,7 +49,18 @@ class UsuarioService:
 
     def actualizar(self, id: int, empresa_id: int, data: UsuarioUpdate) -> Usuario:
         usuario = self.obtener(id, empresa_id)
-        for field, value in data.model_dump(exclude_unset=True).items():
+        cambios = data.model_dump(exclude_unset=True)
+
+        # Este endpoint puede dejar a la empresa sin administradores por dos
+        # caminos distintos, y ambos hay que cerrarlos: bajarle el rol al
+        # último admin, o desactivarlo. Sin esto, la guardia de `desactivar`
+        # y `anonimizar` se puede esquivar con un simple PATCH.
+        pierde_el_rol = cambios.get("rol") not in (None, RolUsuario.ADMIN)
+        lo_desactivan = cambios.get("activo") is False
+        if pierde_el_rol or lo_desactivan:
+            self._verificar_que_no_es_el_ultimo_admin(usuario, empresa_id)
+
+        for field, value in cambios.items():
             setattr(usuario, field, value)
         self.db.commit()
         self.db.refresh(usuario)

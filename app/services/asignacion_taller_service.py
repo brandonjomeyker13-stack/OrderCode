@@ -95,7 +95,9 @@ class AsignacionTallerService:
         if recurso_id is not None:
             return self.obtener_con_merma(recurso_id, empresa_id)
 
-        lote = self.lote_repo.get_by_id(data.lote_id, empresa_id)
+        # Con lock: entre leer lo disponible y confirmar la asignación, otro
+        # operario podría asignar el mismo saldo y dejar el lote sobre-asignado.
+        lote = self.lote_repo.get_by_id_bloqueando(data.lote_id, empresa_id)
         if lote is None:
             raise NotFoundError("Lote no encontrado")
         if lote.estado == EstadoLote.CERRADO_CLIENTE:
@@ -167,7 +169,11 @@ class AsignacionTallerService:
         if recurso_id is not None:
             return self.obtener_con_merma(recurso_id, empresa_id)
 
-        asignacion = self.obtener(id, empresa_id)
+        # Con lock: dos devoluciones simultáneas leerían el mismo pendiente y
+        # ambas pasarían la validación, devolviendo más de lo asignado.
+        asignacion = self.repo.get_by_id_bloqueando(id, empresa_id)
+        if asignacion is None:
+            raise NotFoundError("Asignación no encontrada")
         if asignacion.estado == EstadoAsignacion.ENTREGADO_COMPLETO:
             raise ValidationError("Esta asignación ya fue marcada como entregada por completo")
 

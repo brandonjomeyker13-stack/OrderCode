@@ -37,7 +37,10 @@ class IncidenciaService:
         if recurso_id is not None:
             return self.obtener(recurso_id, empresa_id)
 
-        asignacion = self.asignacion_repo.get_by_id(data.asignacion_id, empresa_id)
+        # Con lock, igual que al registrar una devolución: la merma compite
+        # por el mismo saldo pendiente y dos registros simultáneos podrían
+        # superar entre ambos lo que el taller realmente tiene.
+        asignacion = self.asignacion_repo.get_by_id_bloqueando(data.asignacion_id, empresa_id)
         if asignacion is None:
             raise NotFoundError("Asignación no encontrada")
 

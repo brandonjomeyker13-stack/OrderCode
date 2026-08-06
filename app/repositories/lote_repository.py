@@ -63,6 +63,23 @@ class LoteRepository(BaseRepository[Lote]):
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def get_by_id_bloqueando(self, id: int, empresa_id: int) -> Lote | None:
+        """Igual que get_by_id pero tomando un lock de fila (SELECT ... FOR
+        UPDATE). Se usa antes de validar cuánto queda disponible: sin el lock,
+        dos operarios asignando a la vez leen el mismo "disponible" y ambos
+        pasan la validación, sobre-asignando el lote.
+
+        El lock se libera al confirmar la transacción. En SQLite (tests) no
+        existe FOR UPDATE y SQLAlchemy lo omite -- ahí no hace falta, porque
+        la escritura ya es serializada."""
+        stmt = (
+            select(Lote)
+            .options(selectinload(Lote.tipo_producto))
+            .where(Lote.id == id, Lote.empresa_id == empresa_id)
+            .with_for_update()
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
+
     def calcular_cantidad_asignada(self, lote_id: int, empresa_id: int) -> int:
         """Suma de lo ya asignado a talleres para este lote -- usado para
         saber cuánto queda disponible sin asignar."""

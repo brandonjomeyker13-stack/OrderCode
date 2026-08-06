@@ -21,6 +21,21 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
         )
         return self.db.execute(stmt).scalar_one_or_none()
 
+    def get_by_id_bloqueando(self, id: int, empresa_id: int) -> AsignacionTaller | None:
+        """Con lock de fila, para registrar devoluciones y mermas: sin él, dos
+        registros simultáneos leen el mismo pendiente y ambos pasan la
+        validación, devolviendo más de lo que el taller tenía.
+
+        Sin selectinload: no se puede combinar FOR UPDATE con el join que
+        precarga el taller. Quien necesite el taller lo carga después, ya
+        dentro de la transacción."""
+        stmt = (
+            select(AsignacionTaller)
+            .where(AsignacionTaller.id == id, AsignacionTaller.empresa_id == empresa_id)
+            .with_for_update()
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
+
     @staticmethod
     def _aplicar_filtros(stmt: Select, filtros: FiltrosAsignacion | None) -> Select:
         """Punto único donde se traducen los filtros a SQL, para que el

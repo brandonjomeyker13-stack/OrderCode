@@ -14,7 +14,7 @@ from app.models.enums import RolUsuario
 from app.models.refresh_token import RefreshToken
 from app.models.usuario import Usuario
 from app.schemas.auth import LoginRequest
-from app.schemas.usuario import UsuarioCreate
+from app.schemas.usuario import UsuarioCreate, UsuarioUpdate
 from app.services.auth_service import AuthService
 from app.services.usuario_service import UsuarioService
 from tests.conftest import PASSWORD_DE_PRUEBA
@@ -130,6 +130,35 @@ def test_no_se_puede_desactivar_al_unico_admin(db: Session, empresa: Empresa, ad
 
     db.refresh(admin)
     assert admin.activo is True
+
+
+def test_patch_no_puede_degradar_al_unico_admin(db: Session, empresa: Empresa, admin: Usuario):
+    """Regresión: la guardia estaba solo en desactivar/anonimizar, así que un
+    PATCH bajándole el rol dejaba a la empresa sin ningún administrador."""
+    with pytest.raises(ValidationError):
+        UsuarioService(db).actualizar(
+            admin.id, empresa.id, UsuarioUpdate(rol=RolUsuario.OPERADOR)
+        )
+
+    db.refresh(admin)
+    assert admin.rol == RolUsuario.ADMIN
+
+
+def test_patch_no_puede_desactivar_al_unico_admin(db: Session, empresa: Empresa, admin: Usuario):
+    """Mismo bypass por el otro camino: activo=False vía PATCH."""
+    with pytest.raises(ValidationError):
+        UsuarioService(db).actualizar(admin.id, empresa.id, UsuarioUpdate(activo=False))
+
+    db.refresh(admin)
+    assert admin.activo is True
+
+
+def test_patch_sigue_permitiendo_editar_lo_demas(db: Session, empresa: Empresa, admin: Usuario):
+    """La guardia no debe estorbar los cambios que no ponen en riesgo el acceso."""
+    UsuarioService(db).actualizar(admin.id, empresa.id, UsuarioUpdate(nombre="Nombre Corregido"))
+
+    db.refresh(admin)
+    assert admin.nombre == "Nombre Corregido"
 
 
 def test_si_hay_otro_admin_si_se_permite(db: Session, empresa: Empresa, admin: Usuario):
