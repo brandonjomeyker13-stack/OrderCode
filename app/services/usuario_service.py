@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.core.email import enviar_email
 from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError, ValidationError
-from app.core.security import hash_password, verify_password
+from app.core.security import generate_refresh_token, hash_password, verify_password
+from app.models.enums import RolUsuario
 from app.models.usuario import Usuario
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.usuario_repository import UsuarioRepository
@@ -100,10 +101,55 @@ class UsuarioService:
             """,
         )
 
+    def _verificar_que_no_es_el_ultimo_admin(self, usuario: Usuario, empresa_id: int) -> None:
+        """Sin esta guardia, dar de baja al único admin deja a la empresa sin
+        nadie que pueda administrarla -- y en el caso de anonimizar, sin forma
+        de recuperarlo."""
+        if usuario.rol != RolUsuario.ADMIN or not usuario.activo:
+            return
+        if self.repo.contar_otros_admins_activos(empresa_id, usuario.id) == 0:
+            raise ValidationError(
+                "No se puede dar de baja al único administrador activo: "
+                "primero asigna el rol de administrador a otro usuario"
+            )
+
     def desactivar(self, id: int, empresa_id: int) -> None:
-        """Soft-delete: nunca se borra un usuario físicamente (rompería el
-        histórico de quién hizo qué). Se desactiva y se cierran sus sesiones."""
+        """Soft-delete reversible: el usuario deja de entrar pero sus datos se
+        conservan (ej. alguien que se fue de la empresa y podría volver). Para
+        borrar sus datos personales de verdad, ver `anonimizar`."""
         usuario = self.obtener(id, empresa_id)
+        self._verificar_que_no_es_el_ultimo_admin(usuario, empresa_id)
         usuario.activo = False
+        self.refresh_repo.revocar_todos_de_usuario(usuario.id)
+        self.db.commit()
+
+    def anonimizar(self, id: int, empresa_id: int) -> None:
+        """Borra los datos personales del usuario para atender una solicitud
+        de supresión (Ley 1581), sin eliminar la fila.
+
+        Se conserva la fila porque otras tablas pueden referenciarla (ej.
+        empresas.usuario_propietario_id) y porque el histórico operativo de la
+        empresa -- los lotes y asignaciones -- le pertenece a la empresa, no
+        a la persona. Lo que desaparece es todo lo que identifica a alguien:
+        nombre, correo y su vínculo con la cuenta de Google.
+
+        IRREVERSIBLE: no hay forma de recuperar el nombre ni el correo.
+        """
+        usuario = self.obtener(id, empresa_id)
+        self._verificar_que_no_es_el_ultimo_admin(usuario, empresa_id)
+
+        # El correo tiene UNIQUE: se reemplaza por uno derivado del id (que no
+        # dice nada de la persona) en vez de vaciarlo, para no chocar si se
+        # anonimiza a más de un usuario. El dominio .invalid está reservado
+        # justamente para esto, así nadie puede recibir correo ahí.
+        usuario.nombre = "Usuario eliminado"
+        usuario.email = f"eliminado-{usuario.id}@anonimizado.invalid"
+        usuario.google_sub = None
+        usuario.email_verificado = False
+        # Contraseña imposible de adivinar y que nadie conoce: la cuenta queda
+        # inutilizable incluso si alguien la reactivara por error.
+        usuario.password_hash = hash_password(generate_refresh_token())
+        usuario.activo = False
+
         self.refresh_repo.revocar_todos_de_usuario(usuario.id)
         self.db.commit()

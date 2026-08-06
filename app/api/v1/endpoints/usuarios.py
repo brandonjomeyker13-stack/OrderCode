@@ -97,11 +97,33 @@ def configurar_password_inicial(
     )
 
 
-@router.delete("/{usuario_id}", status_code=204)
+@router.delete(
+    "/{usuario_id}",
+    status_code=204,
+    responses={422: {"description": "No se puede dar de baja al único administrador activo"}},
+)
 def desactivar_usuario(
     usuario_id: int,
     empresa_id: int = Depends(get_empresa_id),
     _admin: Usuario = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    """Baja reversible: el usuario deja de entrar pero sus datos se conservan.
+    Para borrar sus datos personales, ver /anonimizar."""
     UsuarioService(db).desactivar(usuario_id, empresa_id)
+
+
+@router.post(
+    "/{usuario_id}/anonimizar",
+    status_code=204,
+    responses={422: {"description": "No se puede dar de baja al único administrador activo"}},
+)
+def anonimizar_usuario(
+    usuario_id: int,
+    empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Borra el nombre y el correo del usuario para atender una solicitud de
+    supresión de datos personales. IRREVERSIBLE: no se pueden recuperar."""
+    UsuarioService(db).anonimizar(usuario_id, empresa_id)

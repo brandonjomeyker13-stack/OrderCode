@@ -1,7 +1,8 @@
 # app/repositories/usuario_repository.py
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.enums import RolUsuario
 from app.models.usuario import Usuario
 from app.repositories.base import BaseRepository
 
@@ -19,3 +20,19 @@ class UsuarioRepository(BaseRepository[Usuario]):
         """
         stmt = select(Usuario).where(Usuario.email == email)
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def contar_otros_admins_activos(self, empresa_id: int, excluyendo_id: int) -> int:
+        """Cuántos admins activos quedarían si se diera de baja a
+        `excluyendo_id` -- si es 0, la empresa se quedaría sin nadie que
+        pueda administrarla."""
+        stmt = (
+            select(func.count())
+            .select_from(Usuario)
+            .where(
+                Usuario.empresa_id == empresa_id,
+                Usuario.rol == RolUsuario.ADMIN,
+                Usuario.activo.is_(True),
+                Usuario.id != excluyendo_id,
+            )
+        )
+        return self.db.execute(stmt).scalar_one()
