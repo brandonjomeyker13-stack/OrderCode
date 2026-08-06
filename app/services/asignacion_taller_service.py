@@ -5,12 +5,12 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
 from app.models.asignacion_taller import AsignacionTaller
-from app.models.enums import EstadoAsignacion, EstadoLote
+from app.models.enums import CanalNotificacion, EstadoAsignacion, EstadoLote
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.empresa_repository import EmpresaRepository
 from app.repositories.incidencia_repository import IncidenciaRepository
 from app.repositories.lote_repository import LoteRepository
-from app.repositories.notificacion_whatsapp_repository import NotificacionWhatsappRepository
+from app.repositories.notificacion_repository import NotificacionRepository
 from app.repositories.taller_repository import TallerRepository
 from app.schemas.asignacion_taller import (
     AsignacionTallerCreate,
@@ -19,11 +19,14 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerUpdate,
 )
 from app.schemas.filtros import FiltrosAsignacion
-from app.services.notificacion_taller_service import notificar_asignacion_por_whatsapp
+from app.services.notificacion_taller_service import notificar_asignacion
 
 
 def construir_asignacion_out(
-    asignacion: AsignacionTaller, merma: int, notificado: bool
+    asignacion: AsignacionTaller,
+    merma: int,
+    notificado: bool,
+    canal: CanalNotificacion | None,
 ) -> AsignacionTallerOut:
     """Punto único donde se arma la salida con merma/pendiente/notificación
     -- lo usan tanto AsignacionTallerService como IncidenciaService (para
@@ -36,7 +39,8 @@ def construir_asignacion_out(
         taller=asignacion.taller,
         cantidad_merma=merma,
         cantidad_pendiente=asignacion.cantidad_asignada - devuelta - merma,
-        notificacion_whatsapp_enviada=notificado,
+        notificacion_enviada=notificado,
+        canal_notificacion=canal,
     )
 
 
@@ -58,12 +62,12 @@ class AsignacionTallerService:
         self.taller_repo = TallerRepository(db)
         self.incidencia_repo = IncidenciaRepository(db)
         self.empresa_repo = EmpresaRepository(db)
-        self.notificacion_repo = NotificacionWhatsappRepository(db)
+        self.notificacion_repo = NotificacionRepository(db)
 
     def _con_merma(self, asignacion: AsignacionTaller, empresa_id: int) -> AsignacionTallerOut:
         merma = self.incidencia_repo.calcular_cantidad_afectada(asignacion.id, empresa_id)
-        notificado = self.notificacion_repo.fue_exitosa(asignacion.id, empresa_id)
-        return construir_asignacion_out(asignacion, merma, notificado)
+        notificado, canal = self.notificacion_repo.resultado(asignacion.id, empresa_id)
+        return construir_asignacion_out(asignacion, merma, notificado, canal)
 
     def _es_pristina(self, asignacion: AsignacionTaller, empresa_id: int) -> bool:
         """Sin devolución ni merma registrada -- nada más depende todavía de
@@ -134,7 +138,7 @@ class AsignacionTallerService:
         self.db.refresh(asignacion)
 
         empresa = self.empresa_repo.get_by_id(empresa_id)
-        notificar_asignacion_por_whatsapp(self.db, empresa_id, asignacion, lote, taller, empresa.nombre)
+        notificar_asignacion(self.db, empresa_id, asignacion, lote, taller, empresa.nombre)
 
         return self._con_merma(asignacion, empresa_id)
 
@@ -319,7 +323,7 @@ class AsignacionTallerService:
         asignacion = self.obtener(id, empresa_id)
         lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
         empresa = self.empresa_repo.get_by_id(empresa_id)
-        notificar_asignacion_por_whatsapp(
+        notificar_asignacion(
             self.db, empresa_id, asignacion, lote, asignacion.taller, empresa.nombre
         )
         return self._con_merma(asignacion, empresa_id)

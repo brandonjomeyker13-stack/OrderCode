@@ -3,19 +3,30 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.core.email import enviar_email
 from app.core.pdf import generar_ficha_tecnica
 from app.core.whatsapp import enviar_documento_whatsapp
 from app.models.asignacion_taller import AsignacionTaller
-from app.models.enums import EstadoNotificacion
+from app.models.enums import CanalNotificacion, EstadoNotificacion
 from app.models.lote import Lote
-from app.models.notificacion_whatsapp import NotificacionWhatsapp
+from app.models.notificacion import Notificacion
 from app.models.taller import Taller
-from app.repositories.notificacion_whatsapp_repository import NotificacionWhatsappRepository
+from app.repositories.notificacion_repository import NotificacionRepository
 
 logger = logging.getLogger(__name__)
 
 
-def notificar_asignacion_por_whatsapp(
+def _cuerpo_del_correo(taller: Taller, empresa_nombre: str, asignacion: AsignacionTaller) -> str:
+    return f"""
+    <p>Hola {taller.nombre},</p>
+    <p>{empresa_nombre} te asignó un nuevo lote de producción. Adjuntamos la
+    ficha técnica con el detalle de qué recibes, cuánto y desde cuándo.</p>
+    <p>Cantidad asignada: <strong>{asignacion.cantidad_asignada}</strong><br>
+    Fecha de asignación: {asignacion.fecha_asignacion.strftime('%d/%m/%Y')}</p>
+    """
+
+
+def notificar_asignacion(
     db: Session,
     empresa_id: int,
     asignacion: AsignacionTaller,
@@ -24,17 +35,38 @@ def notificar_asignacion_por_whatsapp(
     empresa_nombre: str,
 ) -> None:
     """
-    Genera la ficha técnica y la manda por WhatsApp al taller, dejando un
-    registro del resultado en NotificacionWhatsapp (para poder mostrarlo en
-    el front y permitir reenviar si falló). Separado de AsignacionTallerService
-    a propósito -- que crear una asignación no dependa de saber cómo se arma
-    un PDF o cómo habla con la API de Meta.
+    Manda la ficha técnica al taller y deja registro del intento.
 
-    Best-effort de punta a punta: nada de lo que pasa aquí -- ni siquiera un
-    fallo al guardar el registro del intento -- debe tumbar el flujo que lo
-    dispara (crear la asignación, o el reenvío manual, ya se confirmaron en
-    la base de datos antes de llegar aquí).
+    Se intenta WhatsApp primero porque es donde los talleres realmente miran;
+    el correo es el respaldo para cuando WhatsApp no está disponible (cuenta
+    de Meta sin verificar, número fuera de la lista de prueba, etc.). Si el
+    taller no tiene correo cargado, solo queda el registro del fallo.
+
+    Best-effort de punta a punta: NADA de lo que pase acá adentro puede tumbar
+    el flujo que lo dispara. Crear la asignación ya se confirmó en la base
+    antes de llegar aquí, y no tendría sentido hacerle fallar la operación al
+    usuario porque un servicio externo esté caído.
     """
+    try:
+        _intentar_notificar(db, empresa_id, asignacion, lote, taller, empresa_nombre)
+    except Exception:
+        # Red de seguridad: los clientes de WhatsApp y correo ya capturan sus
+        # propios errores, pero si alguno deja escapar algo inesperado, se
+        # queda acá y no sube al caller.
+        logger.exception(
+            "Falló inesperadamente la notificación de la asignación %s", asignacion.id
+        )
+
+
+def _intentar_notificar(
+    db: Session,
+    empresa_id: int,
+    asignacion: AsignacionTaller,
+    lote: Lote,
+    taller: Taller,
+    empresa_nombre: str,
+) -> None:
+    filename = f"ficha-tecnica-{asignacion.id}.pdf"
     try:
         pdf_bytes = generar_ficha_tecnica(
             empresa_nombre=empresa_nombre,
@@ -47,27 +79,78 @@ def notificar_asignacion_por_whatsapp(
             lote_id=lote.id,
             asignacion_id=asignacion.id,
         )
-        exito, motivo_error = enviar_documento_whatsapp(
-            taller.telefono, pdf_bytes, filename=f"ficha-tecnica-{asignacion.id}.pdf"
-        )
     except Exception as exc:
         logger.exception(
             "Falló la generación de la ficha técnica para la asignación %s", asignacion.id
         )
-        exito, motivo_error = False, str(exc)[:500]
+        _registrar(db, empresa_id, asignacion.id, CanalNotificacion.WHATSAPP, False, str(exc)[:500])
+        return
 
+    exito, motivo = enviar_documento_whatsapp(taller.telefono, pdf_bytes, filename=filename)
+    if exito:
+        _registrar(db, empresa_id, asignacion.id, CanalNotificacion.WHATSAPP, True, None)
+        return
+
+    if not taller.email:
+        logger.warning(
+            "WhatsApp falló para la asignación %s y el taller no tiene correo cargado",
+            asignacion.id,
+        )
+        _registrar(db, empresa_id, asignacion.id, CanalNotificacion.WHATSAPP, False, motivo)
+        return
+
+    logger.info(
+        "WhatsApp falló para la asignación %s, se intenta por correo", asignacion.id
+    )
+    enviado = enviar_email(
+        taller.email,
+        f"Nueva asignación de producción de {empresa_nombre}",
+        _cuerpo_del_correo(taller, empresa_nombre, asignacion),
+        adjunto=(filename, pdf_bytes),
+    )
+    if enviado:
+        # Se guarda el motivo del fallo de WhatsApp igual, para no perder por
+        # qué hubo que recurrir al respaldo.
+        _registrar(
+            db,
+            empresa_id,
+            asignacion.id,
+            CanalNotificacion.CORREO,
+            True,
+            f"WhatsApp no disponible ({motivo})",
+        )
+    else:
+        _registrar(
+            db,
+            empresa_id,
+            asignacion.id,
+            CanalNotificacion.CORREO,
+            False,
+            f"WhatsApp: {motivo} | Correo: también falló",
+        )
+
+
+def _registrar(
+    db: Session,
+    empresa_id: int,
+    asignacion_id: int,
+    canal: CanalNotificacion,
+    exito: bool,
+    error: str | None,
+) -> None:
     try:
-        NotificacionWhatsappRepository(db).create(
-            NotificacionWhatsapp(
+        NotificacionRepository(db).create(
+            Notificacion(
                 empresa_id=empresa_id,
-                asignacion_id=asignacion.id,
+                asignacion_id=asignacion_id,
+                canal=canal,
                 estado=EstadoNotificacion.ENVIADO if exito else EstadoNotificacion.FALLIDO,
-                error=motivo_error,
+                error=error,
             )
         )
         db.commit()
     except Exception:
         db.rollback()
         logger.exception(
-            "Falló al registrar el intento de notificación para la asignación %s", asignacion.id
+            "Falló al registrar el intento de notificación para la asignación %s", asignacion_id
         )

@@ -20,5 +20,9 @@ class Taller(Base, TimestampMixin):
     nombre: Mapped[str] = mapped_column(String(150), nullable=False)
     numero_taller: Mapped[str] = mapped_column(String(30), nullable=False)
     telefono: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Opcional: se usa para mandarle la ficha técnica cuando WhatsApp no está
+    # disponible (ver notificacion_taller_service). Muchos talleres pequeños
+    # no manejan correo, por eso no es obligatorio.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     direccion: Mapped[str | None] = mapped_column(String(255), nullable=True)
     activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

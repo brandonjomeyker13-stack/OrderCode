@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.enums import EstadoAsignacion
+from app.models.enums import CanalNotificacion, EstadoAsignacion
 from app.schemas.common import TimestampSchema
 from app.schemas.taller import TallerOut
 
@@ -46,7 +46,10 @@ class AsignacionTallerOut(TimestampSchema):
     # y asignada - devuelta - merma) y nunca se derivan en el front.
     cantidad_merma: int
     cantidad_pendiente: int
-    # True solo si el ÚLTIMO intento de mandar la ficha técnica por WhatsApp
+    # True solo si el ÚLTIMO intento de mandarle la ficha técnica al taller
     # fue exitoso -- False también cuando todavía no se ha intentado. Si es
     # False, el front puede ofrecer POST /asignaciones/{id}/reenviar-notificacion.
-    notificacion_whatsapp_enviada: bool
+    notificacion_enviada: bool
+    # Por dónde se entregó: "whatsapp" o "correo" (el respaldo). None si
+    # todavía no se ha logrado entregar.
+    canal_notificacion: CanalNotificacion | None

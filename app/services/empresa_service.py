@@ -14,7 +14,7 @@ from app.models.empresa_eliminada import EmpresaEliminada
 from app.models.idempotency_key import IdempotencyKey
 from app.models.incidencia import Incidencia
 from app.models.lote import Lote
-from app.models.notificacion_whatsapp import NotificacionWhatsapp
+from app.models.notificacion import Notificacion
 from app.models.password_reset_token import PasswordResetToken
 from app.models.qr_code import QRCode
 from app.models.refresh_token import RefreshToken
@@ -104,7 +104,7 @@ class EmpresaService:
     # cascade según cómo las resuelva el motor. Así el resultado es el mismo
     # en Postgres, en SQLite y en los tests.
     _ORDEN_DE_BORRADO = (
-        NotificacionWhatsapp,
+        Notificacion,
         Incidencia,
         AsignacionTaller,
         Lote,

@@ -10,7 +10,7 @@ from app.models.incidencia import Incidencia
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.incidencia_repository import IncidenciaRepository
 from app.repositories.lote_repository import LoteRepository
-from app.repositories.notificacion_whatsapp_repository import NotificacionWhatsappRepository
+from app.repositories.notificacion_repository import NotificacionRepository
 from app.schemas.incidencia import IncidenciaCreate, IncidenciaOut
 from app.services.asignacion_taller_service import construir_asignacion_out, recalcular_estado_asignacion
 
@@ -21,15 +21,16 @@ class IncidenciaService:
         self.repo = IncidenciaRepository(db)
         self.asignacion_repo = AsignacionTallerRepository(db)
         self.lote_repo = LoteRepository(db)
-        self.notificacion_repo = NotificacionWhatsappRepository(db)
+        self.notificacion_repo = NotificacionRepository(db)
 
     def _con_asignacion(
         self, incidencia: Incidencia, asignacion: AsignacionTaller, merma: int, empresa_id: int
     ) -> IncidenciaOut:
-        notificado = self.notificacion_repo.fue_exitosa(asignacion.id, empresa_id)
+        notificado, canal = self.notificacion_repo.resultado(asignacion.id, empresa_id)
         columnas = {c.name: getattr(incidencia, c.name) for c in incidencia.__table__.columns}
         return IncidenciaOut(
-            **columnas, asignacion=construir_asignacion_out(asignacion, merma, notificado)
+            **columnas,
+            asignacion=construir_asignacion_out(asignacion, merma, notificado, canal),
         )
 
     def crear(self, empresa_id: int, data: IncidenciaCreate, idempotency_key: str | None = None) -> IncidenciaOut:

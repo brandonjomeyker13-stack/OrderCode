@@ -31,3 +31,10 @@ class TipoIncidencia(str, enum.Enum):
 class EstadoNotificacion(str, enum.Enum):
     ENVIADO = "enviado"
     FALLIDO = "fallido"
+
+
+class CanalNotificacion(str, enum.Enum):
+    """Por dónde se le mandó la ficha técnica al taller. WhatsApp es el
+    preferido (los talleres lo revisan más), el correo es el respaldo."""
+    WHATSAPP = "whatsapp"
+    CORREO = "correo"
