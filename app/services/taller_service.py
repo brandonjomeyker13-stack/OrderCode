@@ -13,16 +13,47 @@ class TallerService:
         self.db = db
         self.repo = TallerRepository(db)
 
+    # Cuántas veces se reintenta si dos altas simultáneas eligen el mismo
+    # número. El UNIQUE de la tabla es quien decide el ganador; la perdedora
+    # recalcula y vuelve a intentar en vez de fallarle al usuario.
+    _MAX_INTENTOS_NUMERO = 5
+
+    def _siguiente_numero(self, empresa_id: int) -> str:
+        """Consecutivo por empresa: el mayor número usado + 1, con ceros a la
+        izquierda ("001", "002", ...).
+
+        Solo se consideran los valores puramente numéricos -- si la empresa
+        tiene talleres cargados a mano con otro formato ("T-01", "taller A"),
+        se ignoran para el conteo en vez de romper la creación."""
+        numeros = [
+            int(numero)
+            for numero in self.repo.numeros_asignados(empresa_id)
+            if numero.isdigit()
+        ]
+        siguiente = max(numeros, default=0) + 1
+        return f"{siguiente:03d}"
+
     def crear(self, empresa_id: int, data: TallerCreate) -> Taller:
-        taller = Taller(empresa_id=empresa_id, **data.model_dump())
-        try:
-            taller = self.repo.create(taller)
-            self.db.commit()
-        except IntegrityError:
-            self.db.rollback()
-            raise ConflictError("Ya existe un taller registrado con ese número")
-        self.db.refresh(taller)
-        return taller
+        """El número lo asigna el servidor -- ver TallerCreate."""
+        for _ in range(self._MAX_INTENTOS_NUMERO):
+            taller = Taller(
+                empresa_id=empresa_id,
+                numero_taller=self._siguiente_numero(empresa_id),
+                **data.model_dump(),
+            )
+            try:
+                taller = self.repo.create(taller)
+                self.db.commit()
+            except IntegrityError:
+                # Otra alta simultánea se quedó con ese número: se recalcula.
+                self.db.rollback()
+                continue
+            self.db.refresh(taller)
+            return taller
+
+        raise ConflictError(
+            "No se pudo asignar un número de taller, intenta de nuevo"
+        )
 
     def listar(self, empresa_id: int, offset: int, limit: int) -> list[Taller]:
         return self.repo.list(empresa_id, offset, limit)

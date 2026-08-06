@@ -18,6 +18,7 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerRegistrarDevolucion,
     AsignacionTallerUpdate,
 )
+from app.schemas.filtros import FiltrosAsignacion
 from app.services.notificacion_taller_service import notificar_asignacion_por_whatsapp
 
 
@@ -228,12 +229,18 @@ class AsignacionTallerService:
             for a in asignaciones
         ):
             lote.estado = EstadoLote.ENTREGADO_PARCIAL
-    def listar(self, empresa_id: int, offset: int, limit: int) -> list[AsignacionTallerOut]:
-        asignaciones = self.repo.list(empresa_id, offset, limit)
+    def listar(
+        self,
+        empresa_id: int,
+        offset: int,
+        limit: int,
+        filtros: FiltrosAsignacion | None = None,
+    ) -> list[AsignacionTallerOut]:
+        asignaciones = self.repo.list(empresa_id, offset, limit, filtros)
         return [self._con_merma(a, empresa_id) for a in asignaciones]
 
-    def contar(self, empresa_id: int) -> int:
-        return self.repo.count(empresa_id)
+    def contar(self, empresa_id: int, filtros: FiltrosAsignacion | None = None) -> int:
+        return self.repo.count(empresa_id, filtros)
 
     def actualizar(
         self, id: int, empresa_id: int, data: AsignacionTallerUpdate

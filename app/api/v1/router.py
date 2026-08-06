@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     empresas,
     incidencias,
     lotes,
+    resumen,
     talleres,
     tipos_producto,
     usuarios,
@@ -24,3 +25,4 @@ api_router.include_router(lotes.router)
 api_router.include_router(asignaciones.router)
 api_router.include_router(incidencias.router)
 api_router.include_router(clientes.router)
+api_router.include_router(resumen.router)

@@ -5,8 +5,10 @@ from app.schemas.common import TimestampSchema
 
 
 class TallerCreate(BaseModel):
+    """`numero_taller` NO se recibe: lo asigna el servidor como consecutivo
+    por empresa (ver TallerService.crear). Desde el cliente es imposible
+    garantizar que dos altas simultáneas no elijan el mismo número."""
     nombre: str = Field(min_length=2, max_length=150)
-    numero_taller: str = Field(min_length=1, max_length=30)
     telefono: str = Field(min_length=7, max_length=20)
     direccion: str | None = Field(default=None, max_length=255)
 

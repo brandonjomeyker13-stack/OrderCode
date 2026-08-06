@@ -7,7 +7,9 @@ from app.api.v1.deps import get_empresa_id, get_pagination
 from app.db.session import get_db
 from app.models.usuario import Usuario
 from app.schemas.common import PaginationParams
+from app.schemas.resumen import ResumenTaller
 from app.schemas.taller import TallerCreate, TallerOut, TallerUpdate
+from app.services.resumen_service import ResumenService
 from app.services.taller_service import TallerService
 
 router = APIRouter(prefix="/talleres", tags=["talleres"])
@@ -42,6 +44,17 @@ def obtener_taller(
     db: Session = Depends(get_db),
 ):
     return TallerService(db).obtener(taller_id, empresa_id)
+
+
+@router.get("/{taller_id}/resumen", response_model=ResumenTaller)
+def obtener_resumen_taller(
+    taller_id: int,
+    empresa_id: int = Depends(get_empresa_id),
+    db: Session = Depends(get_db),
+):
+    """Cifras de un solo taller, agregadas en la base de datos -- evita traer
+    todas las asignaciones e incidencias de la empresa para filtrarlas."""
+    return ResumenService(db).por_taller(taller_id, empresa_id)
 
 
 @router.patch("/{taller_id}", response_model=TallerOut)

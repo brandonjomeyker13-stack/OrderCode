@@ -1,10 +1,13 @@
 # app/api/v1/endpoints/asignaciones.py
-from fastapi import APIRouter, Depends, Header, Response
+from datetime import date
+
+from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
 from app.core.deps import require_admin
 from app.db.session import get_db
+from app.models.enums import EstadoAsignacion
 from app.models.usuario import Usuario
 from app.schemas.asignacion_taller import (
     AsignacionTallerCreate,
@@ -12,9 +15,9 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerRegistrarDevolucion,
     AsignacionTallerUpdate,
 )
-from app.services.asignacion_taller_service import AsignacionTallerService
-from app.api.v1.deps import get_empresa_id, get_pagination
 from app.schemas.common import PaginationParams
+from app.schemas.filtros import FiltrosAsignacion
+from app.services.asignacion_taller_service import AsignacionTallerService
 
 router = APIRouter(prefix="/asignaciones", tags=["asignaciones"])
 
@@ -95,10 +98,24 @@ def registrar_devolucion(
 @router.get("", response_model=list[AsignacionTallerOut])
 def listar_asignaciones(
     response: Response,
+    taller_id: int | None = Query(default=None, description="Solo las de este taller"),
+    lote_id: int | None = Query(default=None, description="Solo las de este lote"),
+    estado: EstadoAsignacion | None = Query(default=None, description="Filtra por estado"),
+    desde: date | None = Query(
+        default=None, description="fecha_asignacion >= desde (inclusive)"
+    ),
+    hasta: date | None = Query(
+        default=None, description="fecha_asignacion <= hasta (inclusive)"
+    ),
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
 ):
+    """Todos los filtros son opcionales y se aplican en la base de datos.
+    X-Total-Count refleja el total YA filtrado, no el total de la empresa."""
+    filtros = FiltrosAsignacion(
+        taller_id=taller_id, lote_id=lote_id, estado=estado, desde=desde, hasta=hasta
+    )
     service = AsignacionTallerService(db)
-    response.headers["X-Total-Count"] = str(service.contar(empresa_id))
-    return service.listar(empresa_id, pagination.offset, pagination.page_size)
+    response.headers["X-Total-Count"] = str(service.contar(empresa_id, filtros))
+    return service.listar(empresa_id, pagination.offset, pagination.page_size, filtros)
