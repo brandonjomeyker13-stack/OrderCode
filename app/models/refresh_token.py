@@ -23,5 +23,13 @@ class RefreshToken(Base, TimestampMixin):
 
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Cuándo se canjeó este token por uno nuevo (rotación). Se guarda en vez
+    # de revocarlo de una para poder distinguir dos casos muy distintos:
+    # - Reuso a los pocos segundos -> son dos pestañas refrescando a la vez,
+    #   es normal y se tolera (ver REFRESH_TOKEN_GRACIA_SEGUNDOS).
+    # - Reuso mucho después -> alguien se copió la cookie; ahí se cierran
+    #   todas las sesiones del usuario.
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ip_origen: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)

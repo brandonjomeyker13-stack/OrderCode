@@ -20,6 +20,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.refresh_token import RefreshToken
 from app.models.usuario import Usuario
 from app.repositories.empresa_repository import EmpresaRepository
+from app.repositories.idempotency_key_repository import IdempotencyKeyRepository
 from app.repositories.password_reset_token_repository import PasswordResetTokenRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.usuario_repository import UsuarioRepository
@@ -114,25 +115,90 @@ class AuthService:
                 user_agent=user_agent,
             )
         )
-        # Limpieza oportunista de tokens vencidos/revocados -- así la tabla
-        # no crece sin límite, sin necesitar un cron ni un servicio aparte.
+        # Limpieza oportunista de filas que ya no sirven -- así estas tablas
+        # no crecen sin límite, sin necesitar un cron ni un servicio aparte.
         self.refresh_repo.eliminar_vencidos()
+        IdempotencyKeyRepository(self.db).eliminar_vencidas()
         self.db.commit()
         return access_token, raw_refresh
 
-    def refrescar_access_token(self, raw_refresh_token: str) -> tuple[str, Usuario]:
+    def refrescar_access_token(self, raw_refresh_token: str) -> tuple[str, Usuario, str | None]:
+        """Rota el refresh token en cada uso (estándar OAuth 2.0 BCP): devuelve
+        uno nuevo y marca el anterior como canjeado. El tercer valor es el
+        nuevo refresh token para que el endpoint reescriba la cookie, o None
+        si esta llamada cayó en la ventana de gracia (ver abajo) y hay que
+        dejar la cookie como está.
+
+        Reusar un token ya canjeado se interpreta según cuándo pasa:
+        - Dentro de la ventana de gracia -> dos pestañas refrescando a la vez
+          o un reintento de red. Se responde normal, sin rotar otra vez.
+        - Después de la ventana -> el token quedó en manos de alguien más
+          (cookie copiada). Se cierran TODAS las sesiones del usuario, porque
+          ya no se puede distinguir al dueño real del atacante.
+        """
         token = self.refresh_repo.get_by_hash(hash_token(raw_refresh_token))
-        if token is None or not self.refresh_repo.es_valido(token):
+        if token is None:
+            raise UnauthorizedError("Sesión inválida o expirada, inicia sesión de nuevo")
+
+        ahora = datetime.now(timezone.utc)
+
+        if token.revoked:
+            # Un token revocado que reaparece es señal de robo: quien lo tenga
+            # guardado no debería poder usarlo nunca más.
+            self.refresh_repo.revocar_todos_de_usuario(token.usuario_id)
+            self.db.commit()
+            raise UnauthorizedError("Sesión inválida o expirada, inicia sesión de nuevo")
+
+        if not self.refresh_repo.es_valido(token):
             raise UnauthorizedError("Sesión inválida o expirada, inicia sesión de nuevo")
 
         usuario = self.db.get(Usuario, token.usuario_id)
         if usuario is None or not usuario.activo:
             raise UnauthorizedError("Usuario no válido")
 
+        # Este es el camino que usa el desbloqueo por huella del front, así
+        # que una empresa pausada tiene que rebotar acá con un mensaje claro
+        # y no más adelante con un 403 suelto en cualquier pantalla.
+        if not usuario.empresa.activo:
+            raise ForbiddenError(
+                "El acceso de tu empresa aún no está activo. Contacta al administrador para activarlo."
+            )
+
         access_token = create_access_token(
             subject=str(usuario.id), empresa_id=usuario.empresa_id, rol=usuario.rol.value
         )
-        return access_token, usuario
+
+        if token.rotated_at is not None:
+            rotated_at = token.rotated_at
+            if rotated_at.tzinfo is None:
+                rotated_at = rotated_at.replace(tzinfo=timezone.utc)
+            dentro_de_gracia = (
+                ahora - rotated_at
+            ).total_seconds() <= settings.REFRESH_TOKEN_GRACIA_SEGUNDOS
+            if not dentro_de_gracia:
+                self.refresh_repo.revocar_todos_de_usuario(usuario.id)
+                self.db.commit()
+                raise UnauthorizedError("Sesión inválida o expirada, inicia sesión de nuevo")
+            # Carrera entre pestañas: sirve el access token nuevo, pero no se
+            # rota otra vez ni se toca la cookie (la ganadora ya la reescribió).
+            return access_token, usuario, None
+
+        token.rotated_at = ahora
+        nuevo_raw = generate_refresh_token()
+        self.refresh_repo.create(
+            RefreshToken(
+                usuario_id=usuario.id,
+                token_hash=hash_token(nuevo_raw),
+                # Ventana deslizante: mientras la persona siga entrando, no
+                # tiene que volver a escribir la contraseña. El control de
+                # pago no depende de esto, sino de empresa.activo (arriba).
+                expires_at=ahora + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+                ip_origen=token.ip_origen,
+                user_agent=token.user_agent,
+            )
+        )
+        self.db.commit()
+        return access_token, usuario, nuevo_raw
 
     def cerrar_sesion(self, raw_refresh_token: str) -> None:
         self.refresh_repo.revocar(hash_token(raw_refresh_token))
@@ -208,6 +274,13 @@ class AuthService:
         if usuario is not None:
             if not usuario.activo:
                 raise UnauthorizedError("Cuenta inactiva")
+            # Mismo control que en autenticar() -- si no, entrar por Google
+            # "funciona" y todo lo demás falla con 403 en la primera llamada
+            # real (get_current_usuario sí lo revisa), dando un error confuso.
+            if not usuario.empresa.activo:
+                raise ForbiddenError(
+                    "El acceso de tu empresa aún no está activo. Contacta al administrador para activarlo."
+                )
             if usuario.google_sub is None:
                 usuario.google_sub = info["sub"]
             if not usuario.email_verificado:

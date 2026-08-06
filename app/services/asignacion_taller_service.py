@@ -90,9 +90,8 @@ class AsignacionTallerService:
     def crear(
         self, empresa_id: int, data: AsignacionTallerCreate, idempotency_key: str | None = None
     ) -> AsignacionTallerOut:
-        previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
-        if previo is not None:
-            _, recurso_id = previo
+        recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "asignacion")
+        if recurso_id is not None:
             return self.obtener_con_merma(recurso_id, empresa_id)
 
         lote = self.lote_repo.get_by_id(data.lote_id, empresa_id)
@@ -124,9 +123,8 @@ class AsignacionTallerService:
         if not self._confirmar_con_idempotencia(
             empresa_id, idempotency_key, "POST /asignaciones", "asignacion", asignacion.id
         ):
-            previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
-            if previo is not None:
-                _, recurso_id = previo
+            recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "asignacion")
+            if recurso_id is not None:
                 return self.obtener_con_merma(recurso_id, empresa_id)
             raise ValidationError("No se pudo completar la asignación, intenta de nuevo")
 
@@ -164,9 +162,8 @@ class AsignacionTallerService:
 
         Las unidades ya registradas como merma (ver IncidenciaService.crear)
         no se pueden devolver -- se descuentan del máximo permitido aquí."""
-        previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
-        if previo is not None:
-            _, recurso_id = previo
+        recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "asignacion")
+        if recurso_id is not None:
             return self.obtener_con_merma(recurso_id, empresa_id)
 
         asignacion = self.obtener(id, empresa_id)
@@ -203,9 +200,8 @@ class AsignacionTallerService:
         if not self._confirmar_con_idempotencia(
             empresa_id, idempotency_key, "POST /asignaciones/{id}/devolucion", "asignacion", asignacion.id
         ):
-            previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
-            if previo is not None:
-                _, recurso_id = previo
+            recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "asignacion")
+            if recurso_id is not None:
                 return self.obtener_con_merma(recurso_id, empresa_id)
             raise ValidationError("No se pudo registrar la devolución, intenta de nuevo")
 

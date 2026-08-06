@@ -24,11 +24,18 @@ class EmpresaService:
             total_usuarios=self.repo.contar_usuarios(empresa_id),
         )
 
+    # Whitelist explícita en vez de un setattr ciego sobre el schema: `activo`
+    # es el interruptor de pago (ver EmpresaUpdate) y no debe volverse
+    # escribible por API solo porque alguien agregue el campo al schema.
+    _CAMPOS_EDITABLES = {"nombre"}
+
     def actualizar(self, empresa_id: int, data: EmpresaUpdate) -> Empresa:
         empresa = self.repo.get_by_id(empresa_id)
         if empresa is None:
             raise NotFoundError("Empresa no encontrada")
         for field, value in data.model_dump(exclude_unset=True).items():
+            if field not in self._CAMPOS_EDITABLES:
+                continue
             setattr(empresa, field, value)
         self.db.commit()
         self.db.refresh(empresa)

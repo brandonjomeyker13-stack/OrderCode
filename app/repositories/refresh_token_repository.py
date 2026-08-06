@@ -47,7 +47,14 @@ class RefreshTokenRepository:
         self.db.flush()
 
     def es_valido(self, token: RefreshToken) -> bool:
-        return not token.revoked and token.expires_at > datetime.now(timezone.utc)
+        expires_at = token.expires_at
+        # Mismo criterio que PasswordResetTokenRepository.es_valido: algunos
+        # backends (ej. SQLite) devuelven el datetime sin tzinfo aunque la
+        # columna sea timezone=True -- siempre se escribe en UTC, así que es
+        # seguro asumir UTC si viene naive.
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return not token.revoked and expires_at > datetime.now(timezone.utc)
 
     def eliminar_vencidos(self, dias_gracia: int = 30) -> int:
         """Borra físicamente los tokens que ya no sirven para nada (expirados

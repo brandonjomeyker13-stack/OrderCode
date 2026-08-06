@@ -22,3 +22,8 @@ __pycache__/
 # Bases de datos locales
 *.db
 *.sqlite3
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/

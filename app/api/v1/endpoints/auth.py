@@ -121,7 +121,11 @@ def refrescar(request: Request, response: Response, db: Session = Depends(get_db
         raise UnauthorizedError("No hay sesión activa")
 
     service = AuthService(db)
-    access_token, usuario = service.refrescar_access_token(raw_refresh)
+    access_token, usuario, nuevo_refresh = service.refrescar_access_token(raw_refresh)
+    # None = esta llamada cayó en la ventana de gracia (otra pestaña ya rotó);
+    # ahí no se toca la cookie para no pisar la que acaba de quedar buena.
+    if nuevo_refresh is not None:
+        _set_refresh_cookie(response, nuevo_refresh)
     return TokenResponse(access_token=access_token, usuario=UsuarioOut.model_validate(usuario))
 
 

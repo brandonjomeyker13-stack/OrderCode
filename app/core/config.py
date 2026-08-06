@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # vez al mes (alineado con el ciclo de pago), no cada semana.
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     REFRESH_TOKEN_COOKIE_NAME: str = "refresh_token"
+    # Ventana en la que un token ya rotado se sigue aceptando, para que dos
+    # pestañas (o un reintento de red) que refrescan a la vez no dejen a
+    # nadie deslogueado. Pasada la ventana, reusar un token rotado se trata
+    # como robo de cookie -> se cierran todas las sesiones del usuario.
+    REFRESH_TOKEN_GRACIA_SEGUNDOS: int = 30
 
     # Bloqueo de cuenta por fuerza bruta en /auth/login
     LOGIN_MAX_INTENTOS: int = 5

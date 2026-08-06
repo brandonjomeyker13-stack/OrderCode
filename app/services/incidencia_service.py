@@ -33,9 +33,8 @@ class IncidenciaService:
         )
 
     def crear(self, empresa_id: int, data: IncidenciaCreate, idempotency_key: str | None = None) -> IncidenciaOut:
-        previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
-        if previo is not None:
-            _, recurso_id = previo
+        recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "incidencia")
+        if recurso_id is not None:
             return self.obtener(recurso_id, empresa_id)
 
         asignacion = self.asignacion_repo.get_by_id(data.asignacion_id, empresa_id)
@@ -70,9 +69,8 @@ class IncidenciaService:
             self.db.commit()
         except IntegrityError:
             self.db.rollback()
-            previo = resolver_recurso_previo(self.db, empresa_id, idempotency_key)
-            if previo is not None:
-                _, recurso_id = previo
+            recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "incidencia")
+            if recurso_id is not None:
                 return self.obtener(recurso_id, empresa_id)
             raise ValidationError("No se pudo registrar la incidencia, intenta de nuevo")
 
