@@ -1,4 +1,6 @@
 # app/schemas/empresa.py
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.common import TimestampSchema
@@ -17,6 +19,12 @@ class EmpresaUpdate(BaseModel):
     nombre: str | None = Field(default=None, min_length=2, max_length=150)
 
 
+class SolicitarEliminacionCuenta(BaseModel):
+    """Pide la contraseña otra vez: es la acción más destructiva del sistema
+    y no debe dispararse solo por tener la sesión abierta."""
+    password: str
+
+
 class EmpresaOut(TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
 
@@ -24,6 +32,9 @@ class EmpresaOut(TimestampSchema):
     nombre: str
     activo: bool
     usuario_propietario_id: int | None = None
+    # Si no es null, la cuenta está programada para borrarse y el front debe
+    # avisarlo de forma visible, junto con la opción de cancelar.
+    eliminacion_solicitada_at: datetime | None = None
 
 
 class EmpresaConEstadisticas(EmpresaOut):

@@ -1,5 +1,7 @@
 # app/models/empresa.py
-from sqlalchemy import Boolean, ForeignKey, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base 
@@ -16,6 +18,16 @@ class Empresa(Base, TimestampMixin):
     # tras confirmar el pago -- sin esto, cualquiera podía crear una cuenta
     # y usarla sin pagar, y la única defensa era desactivar después.
     activo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Derecho de supresión (Ley 1581): cuándo el cliente pidió borrar su
+    # cuenta. No borra nada de inmediato -- hay un periodo de gracia en el que
+    # se puede cancelar (ver EmpresaService.solicitar_eliminacion), y solo
+    # después se purgan los datos de verdad.
+    # Es independiente de `activo`: pedir la baja no es lo mismo que estar
+    # pausado por falta de pago, y se responden con mensajes distintos.
+    eliminacion_solicitada_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # FK circular resuelta con use_alter: usuarios.empresa_id apunta a esta
     # tabla, y esta columna apunta de vuelta al usuario que la creó.

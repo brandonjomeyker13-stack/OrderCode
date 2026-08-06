@@ -18,9 +18,11 @@ from app.models.refresh_token import RefreshToken
 from app.models.idempotency_key import IdempotencyKey
 from app.models.password_reset_token import PasswordResetToken
 from app.models.notificacion_whatsapp import NotificacionWhatsapp
+from app.models.empresa_eliminada import EmpresaEliminada
 
 __all__ = [
     "Empresa",
+    "EmpresaEliminada",
     "Usuario",
     "QRCode",
     "TipoProducto",

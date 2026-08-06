@@ -6,7 +6,7 @@ nueva, así ninguno depende del estado que dejó otro ni toca la base real.
 from datetime import date
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 import app.models  # noqa: F401  -- registra todos los modelos en Base.metadata
@@ -26,6 +26,15 @@ PASSWORD_DE_PRUEBA = "clave-de-prueba-123"
 @pytest.fixture
 def db() -> Session:
     engine = create_engine("sqlite:///:memory:")
+
+    # SQLite ignora las llaves foráneas salvo que se pidan explícitamente.
+    # Sin esto los tests pasarían aunque el código borrara filas en un orden
+    # que Postgres rechazaría -- justo lo que hay que verificar al purgar una
+    # cuenta completa (ver EmpresaService._ORDEN_DE_BORRADO).
+    @event.listens_for(engine, "connect")
+    def _activar_llaves_foraneas(conexion, _registro):
+        conexion.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(engine)
     sesion = sessionmaker(bind=engine)()
     try:

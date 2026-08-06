@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     # Recuperación de contraseña
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Días entre que el cliente pide borrar su cuenta y que los datos se
+    # purgan de verdad. En esa ventana puede arrepentirse y cancelar, y
+    # también le da tiempo de exportar su información.
+    ELIMINACION_CUENTA_DIAS_GRACIA: int = 30
+
     # CORS
     CORS_ORIGINS: str = "https://orderscode.com"
     CORS_ORIGIN_REGEX: str | None = None
