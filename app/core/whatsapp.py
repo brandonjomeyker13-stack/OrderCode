@@ -28,6 +28,29 @@ def normalizar_telefono(telefono: str) -> str:
     return f"{settings.WHATSAPP_DEFAULT_COUNTRY_CODE}{solo_digitos}"
 
 
+def _describir_error_de_meta(exc: requests.HTTPError) -> str:
+    """Saca el motivo real del cuerpo de la respuesta de Meta. Cae de vuelta
+    al texto crudo si la respuesta no trae el JSON esperado."""
+    respuesta = exc.response
+    if respuesta is None:
+        return str(exc)
+    try:
+        error = respuesta.json().get("error", {})
+    except ValueError:
+        return f"HTTP {respuesta.status_code}: {respuesta.text[:300]}"
+
+    partes = [f"HTTP {respuesta.status_code}"]
+    if error.get("message"):
+        partes.append(str(error["message"]))
+    if error.get("code") is not None:
+        partes.append(f"code={error['code']}")
+    if error.get("error_subcode") is not None:
+        partes.append(f"subcode={error['error_subcode']}")
+    if error.get("error_data", {}).get("details"):
+        partes.append(str(error["error_data"]["details"]))
+    return " | ".join(partes)
+
+
 def _subir_media(pdf_bytes: bytes, filename: str) -> str | None:
     """Sube el PDF al endpoint de media de WhatsApp y devuelve el media_id
     para referenciarlo en el mensaje. None si falla."""
@@ -94,6 +117,14 @@ def enviar_documento_whatsapp(telefono: str, pdf_bytes: bytes, filename: str) ->
         )
         respuesta.raise_for_status()
         return True, None
+    except requests.HTTPError as exc:
+        # El texto de requests solo dice "404 Client Error" y no sirve para
+        # diagnosticar: el motivo real viene en el cuerpo JSON que devuelve
+        # Meta (error.message, error.code, error.error_subcode). Sin esto hay
+        # que adivinar por qué rechazaron el envío.
+        motivo = _describir_error_de_meta(exc)
+        logger.error("Falló el envío del documento de WhatsApp a %s: %s", telefono, motivo)
+        return False, motivo[:500]
     except Exception as exc:
         logger.exception("Falló el envío del documento de WhatsApp a %s", telefono)
         return False, str(exc)[:500]
