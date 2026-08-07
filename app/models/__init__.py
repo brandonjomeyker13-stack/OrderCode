@@ -19,6 +19,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.idempotency_key import IdempotencyKey
 from app.models.password_reset_token import PasswordResetToken
 from app.models.notificacion import Notificacion
+from app.models.notificacion_leida import NotificacionLeida
 from app.models.empresa_eliminada import EmpresaEliminada
 from app.models.intento_ip import IntentoIP
 
@@ -39,4 +40,5 @@ __all__ = [
     "IdempotencyKey",
     "PasswordResetToken",
     "Notificacion",
+    "NotificacionLeida",
 ]

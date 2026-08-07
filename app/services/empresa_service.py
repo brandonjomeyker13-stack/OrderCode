@@ -16,6 +16,7 @@ from app.models.idempotency_key import IdempotencyKey
 from app.models.incidencia import Incidencia
 from app.models.lote import Lote
 from app.models.notificacion import Notificacion
+from app.models.notificacion_leida import NotificacionLeida
 from app.models.password_reset_token import PasswordResetToken
 from app.models.qr_code import QRCode
 from app.models.refresh_token import RefreshToken
@@ -162,7 +163,7 @@ class EmpresaService:
         # Los tokens cuelgan del usuario, no de la empresa, así que se
         # resuelven por separado antes de poder borrar los usuarios.
         ids_usuarios = select(Usuario.id).where(Usuario.empresa_id == empresa_id)
-        for modelo in (RefreshToken, PasswordResetToken):
+        for modelo in (RefreshToken, PasswordResetToken, NotificacionLeida):
             self.db.execute(
                 delete(modelo)
                 .where(modelo.usuario_id.in_(ids_usuarios))

@@ -27,6 +27,26 @@ class NotificacionRepository:
         )
         return self.db.execute(stmt).scalar_one_or_none()
 
+    def asignaciones_con_ultimo_envio_fallido(self, empresa_id: int) -> list[Notificacion]:
+        """El último intento de cada asignación, solo donde ese último falló.
+
+        Se mira el último y no "si alguna vez falló": una asignación que falló
+        y después se reenvió bien no debe seguir apareciendo como problema."""
+        ultimos = (
+            select(func.max(Notificacion.id))
+            .where(Notificacion.empresa_id == empresa_id)
+            .group_by(Notificacion.asignacion_id)
+        )
+        stmt = (
+            select(Notificacion)
+            .where(
+                Notificacion.id.in_(ultimos),
+                Notificacion.estado == EstadoNotificacion.FALLIDO,
+            )
+            .order_by(Notificacion.created_at.desc())
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def resultado_por_asignacion(
         self, asignacion_ids: list[int], empresa_id: int
     ) -> dict[int, tuple[bool, CanalNotificacion | None]]:
