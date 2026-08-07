@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     auth,
     clientes,
     empresas,
+    importacion,
     incidencias,
     lotes,
     notificaciones,
@@ -30,5 +31,6 @@ api_router.include_router(incidencias.router)
 api_router.include_router(clientes.router)
 api_router.include_router(resumen.router)
 api_router.include_router(ranking.router)
+api_router.include_router(importacion.router)
 api_router.include_router(alertas.router)
 api_router.include_router(notificaciones.router)

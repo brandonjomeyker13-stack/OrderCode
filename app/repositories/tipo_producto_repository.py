@@ -33,6 +33,13 @@ class TipoProductoRepository(BaseRepository[TipoProducto]):
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def referencias_existentes(self, empresa_id: int) -> list[str]:
+        """Para que la importación avise ANTES de chocar contra el UNIQUE de
+        (empresa_id, referencia). Sin esto el error saldría a mitad del
+        commit, sin poder decir qué fila del Excel lo causó."""
+        stmt = select(TipoProducto.referencia).where(TipoProducto.empresa_id == empresa_id)
+        return list(self.db.execute(stmt).scalars().all())
+
     def get_by_qr_token(self, token: str, empresa_id: int) -> TipoProducto | None:
         """Para el flujo de escaneo de QR: token -> tipo_producto."""
         from app.models.qr_code import QRCode  # import local evita ciclo

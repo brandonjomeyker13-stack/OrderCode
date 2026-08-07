@@ -91,6 +91,14 @@ pertenece.
   el taller tiene en su poder se le asignó antes. Ambas fechas del periodo
   son inclusivas — dejar fuera el último día le restaría un día de trabajo
   al taller en cada corte.
+- **La importación es en dos pasos y todo o nada.** `POST
+  /importacion/previsualizar` no escribe nada: dice qué se crearía y qué está
+  mal, con el número de fila del Excel. `POST /importacion/confirmar` crea, y
+  si una sola fila falla no crea ninguna. Es así porque un taller con
+  asignaciones ya no se puede borrar: una carga a medias no tiene vuelta
+  atrás. Se sube el archivo dos veces en vez de guardar la previsualización
+  en el servidor — no hay estado a medias que expire ni que se cruce entre
+  pestañas.
 - **El Excel no calcula nada.** `GET /ranking/talleres.xlsx` reusa el mismo
   servicio que la pantalla y solo escribe el resultado. Si alguna vez hay que
   agregar una cifra al reporte, va en `RankingService` y aparece en los dos

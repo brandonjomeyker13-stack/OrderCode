@@ -21,3 +21,13 @@ class TallerRepository(BaseRepository[Taller]):
         de talleres, no millones."""
         stmt = select(Taller.numero_taller).where(Taller.empresa_id == empresa_id)
         return list(self.db.execute(stmt).scalars().all())
+
+    def nombres_existentes(self, empresa_id: int) -> list[str]:
+        """Para avisar en la importación cuando un taller ya está cargado.
+
+        La tabla no tiene UNIQUE sobre el nombre (dos talleres pueden
+        llamarse igual y ser distintos), así que sin esta comprobación subir
+        el mismo archivo dos veces duplicaría todo en silencio -- y un taller
+        con historial ya no se puede borrar."""
+        stmt = select(Taller.nombre).where(Taller.empresa_id == empresa_id)
+        return list(self.db.execute(stmt).scalars().all())
