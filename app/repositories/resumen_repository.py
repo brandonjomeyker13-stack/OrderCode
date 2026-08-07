@@ -4,10 +4,14 @@ Consultas agregadas para los tableros. Viven aparte de los repositorios por
 entidad porque cruzan varias tablas a la vez, y su razón de ser es que el
 front NO tenga que traerse listados completos para sumarlos en memoria.
 """
+from datetime import date
+
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
+from app.core.fechas import rango_utc_del_dia
 from app.models.asignacion_taller import AsignacionTaller
+from app.models.devolucion import Devolucion
 from app.models.enums import EstadoAsignacion, EstadoLote
 from app.models.incidencia import Incidencia
 from app.models.lote import Lote
@@ -62,6 +66,21 @@ class ResumenRepository:
         stmt = select(
             func.coalesce(func.sum(AsignacionTaller.cantidad_devuelta), 0)
         ).where(AsignacionTaller.empresa_id == empresa_id)
+        return self.db.execute(stmt).scalar_one()
+
+    def unidades_devueltas_en(self, empresa_id: int, dia: date) -> int:
+        """Lo que entregaron los talleres en un día concreto.
+
+        Antes esto no se podía calcular: solo existía el acumulado por
+        asignación y la fecha de la última entrega, así que un taller que
+        devolvió 50 el lunes y 30 hoy aparecía como 80 devueltas hoy. Con la
+        tabla de eventos sale exacto."""
+        inicio, fin = rango_utc_del_dia(dia)
+        stmt = select(func.coalesce(func.sum(Devolucion.cantidad), 0)).where(
+            Devolucion.empresa_id == empresa_id,
+            Devolucion.fecha >= inicio,
+            Devolucion.fecha < fin,
+        )
         return self.db.execute(stmt).scalar_one()
 
     def unidades_en_merma(self, empresa_id: int) -> int:

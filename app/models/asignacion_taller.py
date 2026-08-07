@@ -28,7 +28,9 @@ class AsignacionTaller(Base, TimestampMixin):
     cantidad_asignada: Mapped[int] = mapped_column(Integer, nullable=False)
     fecha_asignacion: Mapped[date] = mapped_column(Date, nullable=False)
 
-    # Evento de devolución (nulos hasta que el taller entregue)
+    # Acumulado de lo devuelto y fecha de la ÚLTIMA entrega. Se conservan
+    # denormalizados porque son el camino rápido para saber el saldo sin sumar
+    # eventos; el detalle de cada entrega vive en `devoluciones`.
     cantidad_devuelta: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fecha_devolucion: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -48,4 +50,9 @@ class AsignacionTaller(Base, TimestampMixin):
     taller: Mapped["Taller"] = relationship()
     incidencias: Mapped[list["Incidencia"]] = relationship(
         back_populates="asignacion", cascade="all, delete-orphan"
+    )
+    devoluciones: Mapped[list["Devolucion"]] = relationship(
+        back_populates="asignacion",
+        cascade="all, delete-orphan",
+        order_by="Devolucion.fecha",
     )

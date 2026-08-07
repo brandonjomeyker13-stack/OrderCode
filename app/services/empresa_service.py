@@ -9,6 +9,7 @@ from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationErro
 from app.core.security import verify_password
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.cliente import Cliente
+from app.models.devolucion import Devolucion
 from app.models.empresa import Empresa
 from app.models.empresa_eliminada import EmpresaEliminada
 from app.models.idempotency_key import IdempotencyKey
@@ -45,7 +46,7 @@ class EmpresaService:
     # Whitelist explícita en vez de un setattr ciego sobre el schema: `activo`
     # es el interruptor de pago (ver EmpresaUpdate) y no debe volverse
     # escribible por API solo porque alguien agregue el campo al schema.
-    _CAMPOS_EDITABLES = {"nombre"}
+    _CAMPOS_EDITABLES = {"nombre", "dias_alerta_atraso"}
 
     def actualizar(self, empresa_id: int, data: EmpresaUpdate) -> Empresa:
         empresa = self.repo.get_by_id(empresa_id)
@@ -106,6 +107,7 @@ class EmpresaService:
     _ORDEN_DE_BORRADO = (
         Notificacion,
         Incidencia,
+        Devolucion,
         AsignacionTaller,
         Lote,
         TipoProducto,

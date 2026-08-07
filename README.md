@@ -100,6 +100,15 @@ Para restaurar (destructivo, pide confirmación escrita):
 python -m scripts.restaurar respaldos/respaldo-AAAAMMDD-HHMM.json
 ```
 
+**Alertas de lotes atrasados** — manda a los admins el resumen de lo que
+lleva demasiado tiempo en talleres. Pensado para correr una vez al día;
+correrlo de más es inofensivo (cada empresa recibe como mucho uno cada 20h,
+y a las que no tienen atrasos no se les manda nada):
+
+```bash
+python -m scripts.enviar_alertas
+```
+
 **Purga de cuentas eliminadas** — borra definitivamente las que pidieron la
 baja y ya cumplieron el periodo de gracia. Correrlo de más es inofensivo:
 

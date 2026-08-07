@@ -21,3 +21,7 @@ google-auth==2.56.2
 python-multipart==0.0.20
 requests==2.34.2
 reportlab==5.0.0
+# Base de datos de zonas horarias IANA. Necesaria para zoneinfo (ver
+# core/fechas.py): Windows no la trae, y en contenedores Linux mínimos
+# tampoco está garantizada. Sin esto, "America/Bogota" revienta al arrancar.
+tzdata==2026.3

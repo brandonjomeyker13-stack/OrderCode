@@ -1,10 +1,14 @@
 # app/repositories/asignacion_taller_repository.py
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.asignacion_taller import AsignacionTaller
+from app.models.enums import EstadoAsignacion
+from app.models.lote import Lote
 from app.repositories.base import BaseRepository
 from app.schemas.filtros import FiltrosAsignacion
 
@@ -13,10 +17,18 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
     def __init__(self, db: Session):
         super().__init__(AsignacionTaller, db)
 
+    # Se precargan en bloque las relaciones que SIEMPRE se serializan en la
+    # salida. Sin esto, cada fila del listado dispara una consulta extra por
+    # relación -- el N+1 clásico.
+    _PRECARGA_RELACIONES = (
+        selectinload(AsignacionTaller.taller),
+        selectinload(AsignacionTaller.devoluciones),
+    )
+
     def get_by_id(self, id: int, empresa_id: int) -> AsignacionTaller | None:
         stmt = (
             select(AsignacionTaller)
-            .options(selectinload(AsignacionTaller.taller))
+            .options(*self._PRECARGA_RELACIONES)
             .where(AsignacionTaller.id == id, AsignacionTaller.empresa_id == empresa_id)
         )
         return self.db.execute(stmt).scalar_one_or_none()
@@ -65,7 +77,7 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
         opcionales aplicados en SQL."""
         stmt = (
             select(AsignacionTaller)
-            .options(selectinload(AsignacionTaller.taller))
+            .options(*self._PRECARGA_RELACIONES)
             .where(AsignacionTaller.empresa_id == empresa_id)
         )
         stmt = self._aplicar_filtros(stmt, filtros)
@@ -82,10 +94,37 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
         )
         return self.db.execute(self._aplicar_filtros(stmt, filtros)).scalar_one()
 
+    def listar_atrasadas(
+        self, empresa_id: int, fecha_limite: date
+    ) -> list[AsignacionTaller]:
+        """Asignaciones que el taller todavía no termina y que salieron en o
+        antes de `fecha_limite` -- o sea, las que llevan demasiado tiempo
+        fuera sin cerrarse.
+
+        Se excluyen las ENTREGADO_COMPLETO: esas ya volvieron (o se
+        resolvieron con merma) y no hay nada pendiente que reclamar."""
+        stmt = (
+            select(AsignacionTaller)
+            .options(
+                selectinload(AsignacionTaller.taller),
+                # El resumen muestra el producto de cada atraso: sin precargar
+                # esto, sería una consulta por fila.
+                selectinload(AsignacionTaller.lote).selectinload(Lote.tipo_producto),
+            )
+            .where(
+                AsignacionTaller.empresa_id == empresa_id,
+                AsignacionTaller.estado != EstadoAsignacion.ENTREGADO_COMPLETO,
+                AsignacionTaller.fecha_asignacion <= fecha_limite,
+            )
+            # Lo más viejo primero: es lo más urgente.
+            .order_by(AsignacionTaller.fecha_asignacion.asc())
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def listar_por_lote(self, lote_id: int, empresa_id: int) -> list[AsignacionTaller]:
         stmt = (
             select(AsignacionTaller)
-            .options(selectinload(AsignacionTaller.taller))
+            .options(*self._PRECARGA_RELACIONES)
             .where(
                 AsignacionTaller.lote_id == lote_id,
                 AsignacionTaller.empresa_id == empresa_id,

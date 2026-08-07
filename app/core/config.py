@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     IP_MAX_INTENTOS: int = 10
     IP_VENTANA_MINUTOS: int = 15
 
+    # Zona horaria del negocio. Todo se GUARDA en UTC, pero "hoy" para el
+    # usuario es su día local: en Colombia (UTC-5), entre las 7pm y la
+    # medianoche el día UTC ya cambió y el suyo no. Sin esto, métricas como
+    # "devueltas hoy" salen mal varias horas cada día.
+    ZONA_HORARIA: str = "America/Bogota"
+
     # URL del frontend (Lovable) -- se usa para armar links en los correos
     # (ej. "restablece tu contraseña aquí"). Sin path, solo el origen.
     FRONTEND_URL: str = "https://orderscode.com"

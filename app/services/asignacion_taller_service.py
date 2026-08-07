@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
 from app.models.asignacion_taller import AsignacionTaller
+from app.models.devolucion import Devolucion
 from app.models.enums import CanalNotificacion, EstadoAsignacion, EstadoLote
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.empresa_repository import EmpresaRepository
@@ -41,6 +42,7 @@ def construir_asignacion_out(
         cantidad_pendiente=asignacion.cantidad_asignada - devuelta - merma,
         notificacion_enviada=notificado,
         canal_notificacion=canal,
+        devoluciones=asignacion.devoluciones,
     )
 
 
@@ -219,6 +221,16 @@ class AsignacionTallerService:
                 f"({pendiente} unidades, sin contar {merma} en merma)"
             )
 
+        # El evento es la fuente de verdad del historial; los campos de la
+        # asignación quedan como acumulado para no tener que sumarlos siempre.
+        self.db.add(
+            Devolucion(
+                empresa_id=empresa_id,
+                asignacion_id=asignacion.id,
+                cantidad=data.cantidad_devuelta,
+                fecha=data.fecha_devolucion,
+            )
+        )
         asignacion.cantidad_devuelta = nueva_cantidad_devuelta
         asignacion.fecha_devolucion = data.fecha_devolucion
         recalcular_estado_asignacion(asignacion, merma)

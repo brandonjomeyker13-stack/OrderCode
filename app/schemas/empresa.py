@@ -17,6 +17,10 @@ class EmpresaUpdate(BaseModel):
     a /empresas/actual (ese endpoint pide rol admin, y todo cliente es
     admin de su propia empresa)."""
     nombre: str | None = Field(default=None, min_length=2, max_length=150)
+    # A partir de cuántos días fuera se avisa que un lote está atrasado.
+    # El tope de 365 evita que alguien lo desactive de facto poniendo un
+    # número absurdo, y el mínimo de 1 que se llene de alertas inútiles.
+    dias_alerta_atraso: int | None = Field(default=None, ge=1, le=365)
 
 
 class SolicitarEliminacionCuenta(BaseModel):
@@ -32,6 +36,7 @@ class EmpresaOut(TimestampSchema):
     nombre: str
     activo: bool
     usuario_propietario_id: int | None = None
+    dias_alerta_atraso: int
     # Si no es null, la cuenta está programada para borrarse y el front debe
     # avisarlo de forma visible, junto con la opción de cancelar.
     eliminacion_solicitada_at: datetime | None = None

@@ -30,6 +30,16 @@ class AsignacionTallerUpdate(BaseModel):
     fecha_asignacion: date | None = None
 
 
+class DevolucionOut(TimestampSchema):
+    """Una entrega concreta del taller. La lista completa reconstruye el
+    historial que antes se perdía al guardar solo el acumulado."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cantidad: int
+    fecha: datetime
+
+
 class AsignacionTallerOut(TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
 
@@ -53,3 +63,5 @@ class AsignacionTallerOut(TimestampSchema):
     # Por dónde se entregó: "whatsapp" o "correo" (el respaldo). None si
     # todavía no se ha logrado entregar.
     canal_notificacion: CanalNotificacion | None
+    # Cada entrega parcial por separado, de la más vieja a la más reciente.
+    devoluciones: list[DevolucionOut] = []

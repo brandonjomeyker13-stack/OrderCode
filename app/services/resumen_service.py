@@ -2,6 +2,7 @@
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
+from app.core.fechas import hoy_local
 from app.repositories.resumen_repository import ResumenRepository
 from app.repositories.taller_repository import TallerRepository
 from app.schemas.resumen import ResumenGeneral, ResumenTaller
@@ -17,6 +18,7 @@ class ResumenService:
         return ResumenGeneral(
             unidades_en_taller=self.repo.unidades_en_taller(empresa_id),
             unidades_devueltas=self.repo.unidades_devueltas(empresa_id),
+            unidades_devueltas_hoy=self.repo.unidades_devueltas_en(empresa_id, hoy_local()),
             unidades_en_merma=self.repo.unidades_en_merma(empresa_id),
             talleres_activos=self.repo.talleres_activos(empresa_id),
             lotes_pendientes_de_asignar=self.repo.lotes_pendientes_de_asignar(empresa_id),

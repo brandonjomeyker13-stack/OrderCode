@@ -12,6 +12,9 @@ class ResumenGeneral(BaseModel):
     unidades_en_taller: int
     # Acumulado histórico de todo lo que los talleres han entregado.
     unidades_devueltas: int
+    # Solo lo entregado hoy. Sale de los eventos de devolución, así que
+    # cuenta la entrega del día y no el acumulado de la asignación.
+    unidades_devueltas_hoy: int
     # Acumulado histórico de unidades dañadas (no vuelven al stock).
     unidades_en_merma: int
     talleres_activos: int

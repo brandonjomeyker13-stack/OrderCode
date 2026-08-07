@@ -1,7 +1,7 @@
 # app/models/empresa.py
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base 
@@ -18,6 +18,17 @@ class Empresa(Base, TimestampMixin):
     # tras confirmar el pago -- sin esto, cualquiera podía crear una cuenta
     # y usarla sin pagar, y la única defensa era desactivar después.
     activo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # A partir de cuántos días fuera se considera atrasada una asignación que
+    # el taller todavía no termina. Va por empresa porque el tiempo normal de
+    # producción depende del producto: una confección puede tardar una semana
+    # y un mueble un mes.
+    dias_alerta_atraso: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
+    # Cuándo se mandó el último resumen de atrasos, para no repetirlo si el
+    # script se corre varias veces en el mismo día.
+    ultima_alerta_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Derecho de supresión (Ley 1581): cuándo el cliente pidió borrar su
     # cuenta. No borra nada de inmediato -- hay un periodo de gracia en el que
