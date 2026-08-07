@@ -140,7 +140,15 @@ class AsignacionTallerService:
             )
 
         asignacion = self.repo.create(
-            AsignacionTaller(empresa_id=empresa_id, estado=EstadoAsignacion.ASIGNADO, **data.model_dump())
+            AsignacionTaller(
+                empresa_id=empresa_id,
+                estado=EstadoAsignacion.ASIGNADO,
+                # Se COPIA el precio vigente del producto, no se referencia.
+                # Si mañana suben la tarifa, este trabajo se sigue pagando al
+                # precio que se pactó hoy (ver el modelo).
+                precio_unitario=lote.tipo_producto.precio_unitario,
+                **data.model_dump(),
+            )
         )
 
         if lote.estado == EstadoLote.PENDIENTE_ASIGNACION:
@@ -318,6 +326,9 @@ class AsignacionTallerService:
                     f"la fecha de registro del lote ({lote.fecha_registro})"
                 )
             asignacion.fecha_asignacion = data.fecha_asignacion
+
+        if data.precio_unitario is not None:
+            asignacion.precio_unitario = data.precio_unitario
 
         self.db.commit()
         self.db.refresh(asignacion)

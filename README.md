@@ -78,6 +78,19 @@ pertenece.
   Meta responda.
 - **La merma no devuelve stock.** Las unidades dañadas salen de lo pendiente
   del taller, pero no vuelven a estar disponibles en el lote.
+- **El precio por unidad está duplicado a propósito.** El vigente vive en
+  `tipos_producto.precio_unitario` y se edita cuando sube la mano de obra;
+  cada asignación se lleva una copia al crearse. Sin esa copia, subir la
+  tarifa reescribiría el monto de los cortes ya pagados. Corregir un precio
+  mal digitado en una asignación concreta se hace por `PATCH /asignaciones/{id}`,
+  y solo mientras siga pristina.
+- **El ranking de talleres (`GET /ranking/talleres`) mezcla dos tipos de
+  cifra a propósito.** Casi todas son del periodo pedido (lo entregado, lo
+  dañado, lo asignado), pero `unidades_pendientes` es un saldo de hoy:
+  acotarlo al corte daría un número sin significado, porque parte de lo que
+  el taller tiene en su poder se le asignó antes. Ambas fechas del periodo
+  son inclusivas — dejar fuera el último día le restaría un día de trabajo
+  al taller en cada corte.
 
 ## Tareas periódicas
 
@@ -107,6 +120,13 @@ y a las que no tienen atrasos no se les manda nada):
 
 ```bash
 python -m scripts.enviar_alertas
+```
+
+**Probar el monitoreo de errores** — manda un error de prueba a Sentry usando
+la misma configuración que la app, para confirmar que la conexión funciona:
+
+```bash
+python -m scripts.probar_sentry
 ```
 
 **Purga de cuentas eliminadas** — borra definitivamente las que pidieron la

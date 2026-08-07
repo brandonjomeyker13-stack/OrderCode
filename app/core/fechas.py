@@ -32,3 +32,27 @@ def rango_utc_del_dia(dia: date) -> tuple[datetime, datetime]:
     inicio_local = datetime.combine(dia, time.min, tzinfo=zona())
     fin_local = inicio_local + timedelta(days=1)
     return inicio_local.astimezone(timezone.utc), fin_local.astimezone(timezone.utc)
+
+
+def rango_utc_entre(desde: date, hasta: date) -> tuple[datetime, datetime]:
+    """Igual que `rango_utc_del_dia` pero para un periodo de varios días.
+
+    Ambos extremos son INCLUSIVOS en términos de días locales: pedir del 1 al
+    15 incluye todo el día 15. Se usa para los cortes de pago, donde dejar
+    fuera el último día sería restarle plata a un taller.
+    """
+    inicio, _ = rango_utc_del_dia(desde)
+    _, fin = rango_utc_del_dia(hasta)
+    return inicio, fin
+
+
+def fecha_local_de(momento: datetime) -> date:
+    """El día local en que ocurrió un instante guardado en la base.
+
+    Los datetime naive se tratan como UTC: así es como los devuelve SQLite
+    (los tests) mientras que Postgres los devuelve con zona (producción).
+    Sin esta normalización, el mismo cálculo daría distinto en cada motor.
+    """
+    if momento.tzinfo is None:
+        momento = momento.replace(tzinfo=timezone.utc)
+    return momento.astimezone(zona()).date()

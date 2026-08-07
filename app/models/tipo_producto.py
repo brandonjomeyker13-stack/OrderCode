@@ -1,5 +1,7 @@
 # app/models/tipo_producto.py
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from decimal import Decimal
+
+from sqlalchemy import ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base 
@@ -24,6 +26,16 @@ class TipoProducto(Base, TimestampMixin):
 
     nombre: Mapped[str] = mapped_column(String(150), nullable=False)
     referencia: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Lo que se le paga al taller por cada unidad de este producto. Es el
+    # precio VIGENTE y se puede cambiar cuando suba la mano de obra: las
+    # asignaciones se llevan una copia al crearse (ver AsignacionTaller), así
+    # que subirlo no altera los cortes ya pagados.
+    #
+    # Opcional: una empresa puede usar la app solo para control de producción,
+    # sin cargar precios. Numeric y no Float -- la plata no se guarda en coma
+    # flotante, donde 0.1 + 0.2 no da 0.3.
+    precio_unitario: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     qr_code_id: Mapped[int] = mapped_column(
         ForeignKey("qr_codes.id", ondelete="RESTRICT"), unique=True, nullable=False

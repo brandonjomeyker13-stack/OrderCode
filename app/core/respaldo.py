@@ -57,6 +57,13 @@ def _deserializar_fila(tabla, fila: dict[str, Any]) -> dict[str, Any]:
             convertida[nombre] = datetime.fromisoformat(valor)
         elif tipo == "Date" and isinstance(valor, str):
             convertida[nombre] = date.fromisoformat(valor)
+        elif tipo == "Numeric" and isinstance(valor, str):
+            # Los precios salen como texto ("1500.00") para no perder
+            # decimales en el JSON. Volverlos a Decimal explícitamente evita
+            # depender de que cada motor adivine bien la conversión desde
+            # texto -- que es justo donde un respaldo de plata se corrompe
+            # sin avisar.
+            convertida[nombre] = Decimal(valor)
         else:
             convertida[nombre] = valor
     return convertida

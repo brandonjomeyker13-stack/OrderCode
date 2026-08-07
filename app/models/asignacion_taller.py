@@ -1,7 +1,8 @@
 # app/models/asignacion_taller.py
 from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base 
@@ -27,6 +28,17 @@ class AsignacionTaller(Base, TimestampMixin):
     # Evento de asignación
     cantidad_asignada: Mapped[int] = mapped_column(Integer, nullable=False)
     fecha_asignacion: Mapped[date] = mapped_column(Date, nullable=False)
+
+    # COPIA del precio que tenía el tipo de producto al crear la asignación.
+    # Está duplicado a propósito: si el monto a pagar se calculara leyendo el
+    # precio actual del producto, subir la tarifa en marzo reescribiría lo que
+    # dicen los cortes de enero y febrero -- cortes que ya se pagaron. Acá
+    # queda congelado el precio que se pactó cuando salió el trabajo.
+    #
+    # Nulo en las asignaciones anteriores a que existieran las tarifas, y en
+    # empresas que no cargan precios. El ranking reporta aparte cuántas
+    # unidades quedaron sin tarifa, para que un total bajo no pase por bueno.
+    precio_unitario: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     # Acumulado de lo devuelto y fecha de la ÚLTIMA entrega. Se conservan
     # denormalizados porque son el camino rápido para saber el saldo sin sumar
