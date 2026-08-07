@@ -25,3 +25,6 @@ reportlab==5.0.0
 # core/fechas.py): Windows no la trae, y en contenedores Linux mínimos
 # tampoco está garantizada. Sin esto, "America/Bogota" revienta al arrancar.
 tzdata==2026.3
+
+# --- Monitoreo ---
+sentry-sdk[fastapi]==2.66.1

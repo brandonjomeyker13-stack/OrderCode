@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     IP_MAX_INTENTOS: int = 10
     IP_VENTANA_MINUTOS: int = 15
 
+    # Monitoreo de errores (Sentry). Sin DSN configurado no se envía nada --
+    # así en desarrollo y en los tests no se reporta ruido.
+    SENTRY_DSN: str | None = None
+    # Porcentaje de peticiones de las que se mide rendimiento (0.0 a 1.0). El
+    # plan gratuito tiene cupo limitado, así que conviene un valor bajo: con
+    # 0.05 se ve la tendencia sin quemar la cuota.
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.05
+
     # Zona horaria del negocio. Todo se GUARDA en UTC, pero "hoy" para el
     # usuario es su día local: en Colombia (UTC-5), entre las 7pm y la
     # medianoche el día UTC ya cambió y el suyo no. Sin esto, métricas como

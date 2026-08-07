@@ -1,6 +1,7 @@
 # app/main.py
 import logging
 
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -16,9 +17,14 @@ from app.core.exceptions import (
     UnauthorizedError,
     ValidationError,
 )
+from app.core.monitoreo import configurar_sentry
 
 logging.basicConfig(level=logging.INFO if settings.is_production else logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Antes de crear la app: Sentry tiene que estar activo para poder instrumentar
+# FastAPI y capturar también los errores que ocurran durante el arranque.
+configurar_sentry()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -64,6 +70,12 @@ def handle_app_error(request: Request, exc: AppError):
 
 @app.exception_handler(Exception)
 def handle_unexpected_error(request: Request, exc: Exception):
+    # Se reporta a mano porque este handler "atrapa" la excepción y Sentry ya
+    # no la vería como no controlada -- justo los errores que más importa
+    # conocer. Los AppError NO se reportan: son resultados de negocio
+    # esperados (404, validación, etc.), no fallas del sistema, y llenarían
+    # Sentry de ruido hasta volverlo inútil.
+    sentry_sdk.capture_exception(exc)
     logger.exception("Error no controlado en %s %s", request.method, request.url)
     return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
 
