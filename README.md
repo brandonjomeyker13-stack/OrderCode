@@ -91,6 +91,11 @@ pertenece.
   el taller tiene en su poder se le asignó antes. Ambas fechas del periodo
   son inclusivas — dejar fuera el último día le restaría un día de trabajo
   al taller en cada corte.
+- **El Excel no calcula nada.** `GET /ranking/talleres.xlsx` reusa el mismo
+  servicio que la pantalla y solo escribe el resultado. Si alguna vez hay que
+  agregar una cifra al reporte, va en `RankingService` y aparece en los dos
+  lados; calcularla dentro de `core/excel.py` es cómo se llega a que el
+  archivo diga una cosa y la app otra.
 
 ## Tareas periódicas
 

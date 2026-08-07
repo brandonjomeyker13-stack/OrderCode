@@ -12,8 +12,10 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.core.excel import nombre_de_archivo, ranking_a_excel
 from app.core.exceptions import ValidationError
 from app.core.fechas import fecha_local_de, hoy_local
+from app.repositories.empresa_repository import EmpresaRepository
 from app.repositories.ranking_repository import RankingRepository
 from app.schemas.ranking import RankingTaller, RankingTalleres
 
@@ -27,6 +29,7 @@ class RankingService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = RankingRepository(db)
+        self.empresa_repo = EmpresaRepository(db)
 
     def talleres(
         self,
@@ -98,6 +101,22 @@ class RankingService:
             total_a_pagar=sum((f.monto_a_pagar for f in filas), Decimal("0")),
             total_unidades_sin_tarifa=sum(f.unidades_sin_tarifa for f in filas),
         )
+
+    def exportar_excel(
+        self,
+        empresa_id: int,
+        desde: date | None = None,
+        hasta: date | None = None,
+    ) -> tuple[bytes, str]:
+        """El MISMO ranking que ve la pantalla, escrito en un .xlsx.
+
+        Reusa `talleres()` en vez de rehacer las consultas: así el archivo no
+        puede decir algo distinto a lo que el usuario tiene delante, que es la
+        queja clásica contra los reportes exportados.
+        """
+        ranking = self.talleres(empresa_id, desde=desde, hasta=hasta)
+        empresa = self.empresa_repo.get_by_id(empresa_id)
+        return ranking_a_excel(ranking, empresa.nombre), nombre_de_archivo(ranking)
 
     @staticmethod
     def _tasa_merma(devueltas: int, merma: int) -> float:

@@ -44,7 +44,10 @@ app.add_middleware(
     allow_headers=["*"],
     # Sin esto el navegador recibe X-Total-Count pero el JS del front no
     # puede leerlo (los headers custom no son "simples" por default en CORS).
-    expose_headers=["X-Total-Count"],
+    # Content-Disposition va por lo mismo: sin exponerlo, la descarga del
+    # Excel llega bien pero el front no puede leer el nombre del archivo y
+    # termina guardándolo con un nombre aleatorio.
+    expose_headers=["X-Total-Count", "Content-Disposition"],
 )
 
 
