@@ -25,6 +25,27 @@ class IncidenciaRepository(BaseRepository[Incidencia]):
         )
         return self.db.execute(stmt).scalar_one()
 
+    def merma_por_asignacion(
+        self, asignacion_ids: list[int], empresa_id: int
+    ) -> dict[int, int]:
+        """Merma de varias asignaciones en UNA sola consulta. Sin esto, un
+        listado de 50 filas dispara 50 consultas extra (ver los servicios que
+        arman los listados)."""
+        if not asignacion_ids:
+            return {}
+        stmt = (
+            select(
+                Incidencia.asignacion_id,
+                func.coalesce(func.sum(Incidencia.cantidad_afectada), 0),
+            )
+            .where(
+                Incidencia.asignacion_id.in_(asignacion_ids),
+                Incidencia.empresa_id == empresa_id,
+            )
+            .group_by(Incidencia.asignacion_id)
+        )
+        return {fila[0]: fila[1] for fila in self.db.execute(stmt).all()}
+
     def get_by_id(self, id: int, empresa_id: int) -> Incidencia | None:
         stmt = (
             select(Incidencia)

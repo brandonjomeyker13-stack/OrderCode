@@ -1,4 +1,6 @@
 # app/services/usuario_service.py
+from xml.sax.saxutils import escape
+
 from sqlalchemy.orm import Session
 
 from app.core.email import enviar_email
@@ -80,7 +82,7 @@ class UsuarioService:
             usuario.email,
             "Tu contraseña fue cambiada",
             f"""
-            <p>Hola {usuario.nombre},</p>
+            <p>Hola {escape(usuario.nombre)},</p>
             <p>Tu contraseña se cambió correctamente. Si no fuiste tú, contacta a tu
             administrador de inmediato.</p>
             """,
@@ -106,7 +108,7 @@ class UsuarioService:
             usuario.email,
             "Configuraste una contraseña para tu cuenta",
             f"""
-            <p>Hola {usuario.nombre},</p>
+            <p>Hola {escape(usuario.nombre)},</p>
             <p>Ya puedes iniciar sesión con tu correo y esta contraseña, además de con Google.
             Si no fuiste tú, contacta a tu administrador de inmediato.</p>
             """,

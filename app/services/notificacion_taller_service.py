@@ -1,5 +1,6 @@
 # app/services/notificacion_taller_service.py
 import logging
+from xml.sax.saxutils import escape
 
 from sqlalchemy.orm import Session
 
@@ -17,9 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 def _cuerpo_del_correo(taller: Taller, empresa_nombre: str, asignacion: AsignacionTaller) -> str:
+    # escape() sobre lo que escribió el usuario: sin esto, un nombre con "&"
+    # o "<" desconfigura el HTML del correo, y alguien podría meter marcado
+    # arbitrario en un mensaje que sale a nombre de la plataforma.
+    nombre_taller = escape(taller.nombre)
+    nombre_empresa = escape(empresa_nombre)
     return f"""
-    <p>Hola {taller.nombre},</p>
-    <p>{empresa_nombre} te asignó un nuevo lote de producción. Adjuntamos la
+    <p>Hola {nombre_taller},</p>
+    <p>{nombre_empresa} te asignó un nuevo lote de producción. Adjuntamos la
     ficha técnica con el detalle de qué recibes, cuánto y desde cuándo.</p>
     <p>Cantidad asignada: <strong>{asignacion.cantidad_asignada}</strong><br>
     Fecha de asignación: {asignacion.fecha_asignacion.strftime('%d/%m/%Y')}</p>

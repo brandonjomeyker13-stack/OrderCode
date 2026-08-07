@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     LOGIN_MAX_INTENTOS: int = 5
     LOGIN_BLOQUEO_MINUTOS: int = 15
 
+    # Límite por IP en los endpoints públicos (registro, recuperación de
+    # contraseña, Google). Distinto del bloqueo de cuenta de arriba: ese
+    # protege una cuenta concreta, este protege al servicio de alguien que
+    # crea cuentas en masa o quema la cuota de correo desde una misma IP.
+    IP_MAX_INTENTOS: int = 10
+    IP_VENTANA_MINUTOS: int = 15
+
     # URL del frontend (Lovable) -- se usa para armar links en los correos
     # (ej. "restablece tu contraseña aquí"). Sin path, solo el origen.
     FRONTEND_URL: str = "https://orderscode.com"

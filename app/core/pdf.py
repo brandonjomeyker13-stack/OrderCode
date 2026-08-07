@@ -1,6 +1,7 @@
 # app/core/pdf.py
 import io
 from datetime import date, datetime, timezone
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
@@ -32,10 +33,19 @@ def _estilo(nombre: str, **kwargs) -> ParagraphStyle:
     return ParagraphStyle(nombre, **{**base, **kwargs})
 
 
+def _texto(valor: str) -> str:
+    """Escapa el texto que escribió el usuario antes de meterlo en un
+    Paragraph. reportlab interpreta un mini-HTML ahí adentro, así que un
+    nombre tan normal como "Taller <Sol" o "A & B" o lo desconfigura o
+    directamente revienta la generación del PDF -- y con ella, el envío de
+    la ficha al taller."""
+    return escape(str(valor))
+
+
 def _encabezado(empresa_nombre: str) -> Table:
     """Barra superior con el nombre de la empresa y el tipo de documento."""
     izquierda = Paragraph(
-        empresa_nombre,
+        _texto(empresa_nombre),
         _estilo("empresa", fontName="Helvetica-Bold", fontSize=13, textColor=colors.white),
     )
     derecha = Paragraph(
@@ -69,10 +79,10 @@ def _bloque_destinatario(taller_nombre: str, taller_numero: str) -> Table:
         [Paragraph("ENTREGADO A", _estilo("lbl", fontSize=8, textColor=GRIS_SUAVE))],
         [
             Paragraph(
-                taller_nombre, _estilo("taller", fontName="Helvetica-Bold", fontSize=15, leading=19)
+                _texto(taller_nombre), _estilo("taller", fontName="Helvetica-Bold", fontSize=15, leading=19)
             )
         ],
-        [Paragraph(f"Taller N.º {taller_numero}", _estilo("num", fontSize=10, textColor=GRIS_SUAVE))],
+        [Paragraph(f"Taller N.º {_texto(taller_numero)}", _estilo("num", fontSize=10, textColor=GRIS_SUAVE))],
     ]
     tabla = Table(contenido, colWidths=[_ANCHO_UTIL])
     tabla.setStyle(
@@ -134,8 +144,8 @@ def _destacado_cantidad(cantidad: int, fecha_asignacion: date) -> Table:
 def _tabla_detalle(filas: list[tuple[str, str]]) -> Table:
     contenido = [
         [
-            Paragraph(etiqueta, _estilo("k", fontSize=9, textColor=GRIS_SUAVE)),
-            Paragraph(valor, _estilo("v", fontName="Helvetica-Bold", fontSize=10)),
+            Paragraph(_texto(etiqueta), _estilo("k", fontSize=9, textColor=GRIS_SUAVE)),
+            Paragraph(_texto(valor), _estilo("v", fontName="Helvetica-Bold", fontSize=10)),
         ]
         for etiqueta, valor in filas
     ]
@@ -201,7 +211,7 @@ def generar_ficha_tecnica(
     pie = Paragraph(
         f"Documento generado automáticamente el {generado}.<br/>"
         "Consérvalo como comprobante de lo recibido. Ante cualquier diferencia "
-        f"en la cantidad, repórtala a {empresa_nombre} antes de comenzar la producción.",
+        f"en la cantidad, repórtala a {_texto(empresa_nombre)} antes de comenzar la producción.",
         _estilo("pie", fontSize=8, textColor=GRIS_SUAVE, leading=11, alignment=TA_CENTER),
     )
 

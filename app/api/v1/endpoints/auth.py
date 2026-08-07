@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.deps import get_current_usuario
+from app.core.rate_limit import obtener_ip, verificar_limite_ip
 from app.core.exceptions import UnauthorizedError
 from app.db.session import get_db
 from app.models.usuario import Usuario
@@ -41,6 +42,7 @@ def registrar(
     db: Session = Depends(get_db),
 ):
     """Alta de un nuevo tenant: crea la empresa y su usuario admin."""
+    verificar_limite_ip(db, obtener_ip(request), "POST /auth/registro")
     service = AuthService(db)
     usuario = service.registrar_empresa_y_admin(data)
     access_token, raw_refresh = service.emitir_tokens(
@@ -88,6 +90,7 @@ def login_con_google(
 ):
     """Recibe el `id_token` (credential) que entrega Google Identity Services
     en el front -- no un authorization code de OAuth clásico."""
+    verificar_limite_ip(db, obtener_ip(request), "POST /auth/google")
     service = AuthService(db)
     usuario = service.autenticar_con_google(data.id_token, data.nombre_empresa)
     access_token, raw_refresh = service.emitir_tokens(
@@ -99,9 +102,12 @@ def login_con_google(
 
 
 @router.post("/forgot-password", status_code=204)
-def olvide_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def olvide_password(
+    data: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)
+):
     """Siempre responde 204 exista o no el correo -- evita enumeración de
     cuentas. Si existe, se manda el enlace por correo (ver AuthService)."""
+    verificar_limite_ip(db, obtener_ip(request), "POST /auth/forgot-password")
     AuthService(db).iniciar_recuperacion_password(data.email)
 
 
@@ -110,7 +116,10 @@ def olvide_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
     status_code=204,
     responses={401: {"description": "Enlace inválido o expirado"}},
 )
-def restablecer_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+def restablecer_password(
+    data: ResetPasswordRequest, request: Request, db: Session = Depends(get_db)
+):
+    verificar_limite_ip(db, obtener_ip(request), "POST /auth/reset-password")
     AuthService(db).restablecer_password(data.token, data.password_nueva)
 
 

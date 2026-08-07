@@ -83,16 +83,31 @@ class IncidenciaService:
         return self._con_asignacion(incidencia, asignacion, merma_total, empresa_id)
 
     def listar(self, empresa_id: int, offset: int, limit: int) -> list[IncidenciaOut]:
+        """Los agregados se cargan en bloque: uno por fila convertía un
+        listado de 50 incidencias en más de 100 consultas."""
         incidencias = self.repo.list(empresa_id, offset, limit)
-        return [
-            self._con_asignacion(
-                i,
-                i.asignacion,
-                self.repo.calcular_cantidad_afectada(i.asignacion_id, empresa_id),
-                empresa_id,
+        ids = [i.asignacion_id for i in incidencias]
+        mermas = self.repo.merma_por_asignacion(ids, empresa_id)
+        notificaciones = self.notificacion_repo.resultado_por_asignacion(ids, empresa_id)
+
+        salida = []
+        for incidencia in incidencias:
+            notificado, canal = notificaciones.get(incidencia.asignacion_id, (False, None))
+            columnas = {
+                c.name: getattr(incidencia, c.name) for c in incidencia.__table__.columns
+            }
+            salida.append(
+                IncidenciaOut(
+                    **columnas,
+                    asignacion=construir_asignacion_out(
+                        incidencia.asignacion,
+                        mermas.get(incidencia.asignacion_id, 0),
+                        notificado,
+                        canal,
+                    ),
+                )
             )
-            for i in incidencias
-        ]
+        return salida
 
     def contar(self, empresa_id: int) -> int:
         return self.repo.count(empresa_id)

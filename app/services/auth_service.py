@@ -1,5 +1,6 @@
 # app/services/auth_service.py
 from datetime import datetime, timedelta, timezone
+from xml.sax.saxutils import escape
 
 from sqlalchemy.orm import Session
 
@@ -7,6 +8,7 @@ from app.core.config import settings
 from app.core.email import enviar_email
 from app.core.exceptions import ConflictError, ForbiddenError, RateLimitedError, UnauthorizedError
 from app.core.google_auth import verificar_id_token_google
+from app.core.rate_limit import limpiar_ventanas_vencidas
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -119,6 +121,7 @@ class AuthService:
         # no crecen sin límite, sin necesitar un cron ni un servicio aparte.
         self.refresh_repo.eliminar_vencidos()
         IdempotencyKeyRepository(self.db).eliminar_vencidas()
+        limpiar_ventanas_vencidas(self.db)
         self.db.commit()
         return access_token, raw_refresh
 
@@ -229,7 +232,7 @@ class AuthService:
             usuario.email,
             "Recupera tu contraseña",
             f"""
-            <p>Hola {usuario.nombre},</p>
+            <p>Hola {escape(usuario.nombre)},</p>
             <p>Recibimos una solicitud para restablecer tu contraseña. Este enlace vence en
             {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutos:</p>
             <p><a href="{link}">Restablecer contraseña</a></p>
@@ -257,7 +260,7 @@ class AuthService:
             usuario.email,
             "Tu contraseña fue cambiada",
             f"""
-            <p>Hola {usuario.nombre},</p>
+            <p>Hola {escape(usuario.nombre)},</p>
             <p>Tu contraseña se restableció correctamente. Si no fuiste tú, contacta a tu
             administrador de inmediato.</p>
             """,

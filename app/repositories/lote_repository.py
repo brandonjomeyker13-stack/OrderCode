@@ -80,6 +80,24 @@ class LoteRepository(BaseRepository[Lote]):
         )
         return self.db.execute(stmt).scalar_one_or_none()
 
+    def asignado_por_lote(self, lote_ids: list[int], empresa_id: int) -> dict[int, int]:
+        """Lo asignado de varios lotes en UNA consulta -- para los listados,
+        que si no hacen una consulta por fila."""
+        if not lote_ids:
+            return {}
+        stmt = (
+            select(
+                AsignacionTaller.lote_id,
+                func.coalesce(func.sum(AsignacionTaller.cantidad_asignada), 0),
+            )
+            .where(
+                AsignacionTaller.lote_id.in_(lote_ids),
+                AsignacionTaller.empresa_id == empresa_id,
+            )
+            .group_by(AsignacionTaller.lote_id)
+        )
+        return {fila[0]: fila[1] for fila in self.db.execute(stmt).all()}
+
     def calcular_cantidad_asignada(self, lote_id: int, empresa_id: int) -> int:
         """Suma de lo ya asignado a talleres para este lote -- usado para
         saber cuánto queda disponible sin asignar."""

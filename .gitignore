@@ -27,3 +27,8 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Respaldos: llevan TODOS los datos de los clientes, incluidos los hashes de
+# contraseñas. Nunca deben subirse a git.
+respaldos/
+*.respaldo.json

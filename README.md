@@ -81,9 +81,28 @@ pertenece.
 
 ## Tareas periódicas
 
+**Respaldo de la base** — el plan gratuito de Supabase no hace copias
+automáticas, así que esta es la única red de seguridad que hay:
+
+```bash
+python -m scripts.respaldar
+```
+
+Genera `respaldos/respaldo-AAAAMMDD-HHMM.json` con todo el contenido.
+**Guarda el archivo fuera de esta máquina** (Drive, disco externo): un respaldo
+que vive en el mismo lugar que se puede dañar no sirve de nada. La carpeta
+`respaldos/` está en `.gitignore` a propósito — esos archivos llevan datos
+personales de los clientes y hashes de contraseñas.
+
+Para restaurar (destructivo, pide confirmación escrita):
+
+```bash
+python -m scripts.restaurar respaldos/respaldo-AAAAMMDD-HHMM.json
+```
+
+**Purga de cuentas eliminadas** — borra definitivamente las que pidieron la
+baja y ya cumplieron el periodo de gracia. Correrlo de más es inofensivo:
+
 ```bash
 python -m scripts.purgar_cuentas_eliminadas
 ```
-
-Borra definitivamente las cuentas que pidieron la baja y ya cumplieron el
-periodo de gracia. Correrlo de más es inofensivo.

@@ -69,6 +69,23 @@ class AsignacionTallerService:
         notificado, canal = self.notificacion_repo.resultado(asignacion.id, empresa_id)
         return construir_asignacion_out(asignacion, merma, notificado, canal)
 
+    def _lista_con_merma(
+        self, asignaciones: list[AsignacionTaller], empresa_id: int
+    ) -> list[AsignacionTallerOut]:
+        """Versión en bloque de _con_merma: dos consultas en total en vez de
+        dos POR FILA. Con page_size=100 la diferencia es de ~200 consultas a 2."""
+        ids = [a.id for a in asignaciones]
+        mermas = self.incidencia_repo.merma_por_asignacion(ids, empresa_id)
+        notificaciones = self.notificacion_repo.resultado_por_asignacion(ids, empresa_id)
+        return [
+            construir_asignacion_out(
+                a,
+                mermas.get(a.id, 0),
+                *notificaciones.get(a.id, (False, None)),
+            )
+            for a in asignaciones
+        ]
+
     def _es_pristina(self, asignacion: AsignacionTaller, empresa_id: int) -> bool:
         """Sin devolución ni merma registrada -- nada más depende todavía de
         sus cantidades/fechas, así que se puede corregir o borrar sin dejar
@@ -153,7 +170,7 @@ class AsignacionTallerService:
 
     def listar_por_lote(self, lote_id: int, empresa_id: int) -> list[AsignacionTallerOut]:
         asignaciones = self.repo.listar_por_lote(lote_id, empresa_id)
-        return [self._con_merma(a, empresa_id) for a in asignaciones]
+        return self._lista_con_merma(asignaciones, empresa_id)
 
     def registrar_devolucion(
         self,
@@ -247,7 +264,7 @@ class AsignacionTallerService:
         filtros: FiltrosAsignacion | None = None,
     ) -> list[AsignacionTallerOut]:
         asignaciones = self.repo.list(empresa_id, offset, limit, filtros)
-        return [self._con_merma(a, empresa_id) for a in asignaciones]
+        return self._lista_con_merma(asignaciones, empresa_id)
 
     def contar(self, empresa_id: int, filtros: FiltrosAsignacion | None = None) -> int:
         return self.repo.count(empresa_id, filtros)
