@@ -105,6 +105,23 @@ pertenece.
   lados; calcularla dentro de `core/excel.py` es cómo se llega a que el
   archivo diga una cosa y la app otra.
 
+## Chequeos de salud
+
+Dos endpoints públicos, y la diferencia importa:
+
+- **`GET /health`** — solo dice si el proceso está vivo. Es la sonda de
+  Render y es tonta a propósito: si consultara la base, un parpadeo de
+  Supabase haría que Render reiniciara el servicio en bucle.
+- **`GET /listo`** — hace un `SELECT 1` y devuelve 503 si la base no
+  responde. **Este es el que debe vigilar el monitor de caída externo**, cada
+  5 minutos. Vigilar `/health` daría un monitor en verde con la app
+  inservible. De paso mantiene despierto el proyecto de Supabase, que en
+  plan gratuito se pausa tras varios días sin actividad.
+
+Ninguno devuelve el detalle del error: el mensaje de una falla de conexión
+suele traer la cadena completa con usuario y contraseña, y estos endpoints
+los puede llamar cualquiera.
+
 ## Tareas periódicas
 
 **Respaldo de la base** — el plan gratuito de Supabase no hace copias
