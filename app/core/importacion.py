@@ -162,8 +162,13 @@ def _buscar_hoja(libro, nombre: str):
     return None
 
 
-def _mapear_columnas(hoja, definicion: dict) -> tuple[dict[str, int], list[str]]:
-    """Devuelve {campo: número de columna} y los campos que no se encontraron."""
+def _mapear_columnas(hoja, definicion: dict) -> dict[str, int]:
+    """Devuelve {campo: número de columna} leyendo los títulos de la fila 1.
+
+    Una columna que no aparezca simplemente no queda en el mapa; quién decide
+    si eso es un problema es cada lector, porque unas columnas son
+    obligatorias y otras no.
+    """
     encabezados = {}
     for columna in range(1, hoja.max_column + 1):
         titulo = normalizar(_valor(hoja.cell(row=1, column=columna)))
@@ -176,10 +181,7 @@ def _mapear_columnas(hoja, definicion: dict) -> tuple[dict[str, int], list[str]]
             if nombre in encabezados:
                 mapa[campo] = encabezados[nombre]
                 break
-    faltantes = [
-        definicion[campo][0] for campo in definicion if campo not in mapa
-    ]
-    return mapa, faltantes
+    return mapa
 
 
 def _filas_con_datos(hoja, mapa: dict[str, int], nombre_hoja: str, resultado: ArchivoLeido):
@@ -206,7 +208,7 @@ def _filas_con_datos(hoja, mapa: dict[str, int], nombre_hoja: str, resultado: Ar
 
 
 def _leer_talleres(hoja, resultado: ArchivoLeido) -> None:
-    mapa, faltantes = _mapear_columnas(hoja, _COLUMNAS_TALLER)
+    mapa = _mapear_columnas(hoja, _COLUMNAS_TALLER)
     obligatorias_faltantes = [c for c in _OBLIGATORIAS_TALLER if c not in mapa]
     if obligatorias_faltantes:
         resultado.problemas.append(
@@ -263,7 +265,7 @@ def _leer_talleres(hoja, resultado: ArchivoLeido) -> None:
 
 
 def _leer_productos(hoja, resultado: ArchivoLeido) -> None:
-    mapa, _ = _mapear_columnas(hoja, _COLUMNAS_PRODUCTO)
+    mapa = _mapear_columnas(hoja, _COLUMNAS_PRODUCTO)
     obligatorias_faltantes = [c for c in _OBLIGATORIAS_PRODUCTO if c not in mapa]
     if obligatorias_faltantes:
         resultado.problemas.append(
