@@ -23,6 +23,7 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerRegistrarDevolucion,
 )
 from app.services.asignacion_taller_service import AsignacionTallerService
+from scripts.respaldar import _rotar
 
 
 @pytest.fixture
@@ -145,6 +146,78 @@ def test_se_puede_seguir_creando_despues_de_restaurar(
     db.commit()
 
     assert nuevo.id is not None
+
+
+# --- Rotación de archivos viejos ---
+#
+# Esto BORRA archivos del disco, así que se prueba con más cuidado que el
+# resto: lo que está en juego no es que falle, es que borre lo que no debe.
+
+def _crear(carpeta: Path, *nombres: str) -> None:
+    carpeta.mkdir(parents=True, exist_ok=True)
+    for nombre in nombres:
+        (carpeta / nombre).write_text("{}", encoding="utf-8")
+
+
+def test_conserva_los_mas_recientes_y_borra_los_viejos(tmp_path: Path):
+    _crear(
+        tmp_path,
+        "respaldo-20260101-0300.json",
+        "respaldo-20260102-0300.json",
+        "respaldo-20260103-0300.json",
+        "respaldo-20260104-0300.json",
+    )
+
+    borrados = _rotar(tmp_path, conservar=2)
+
+    quedan = sorted(p.name for p in tmp_path.glob("*.json"))
+    assert quedan == ["respaldo-20260103-0300.json", "respaldo-20260104-0300.json"]
+    assert len(borrados) == 2
+
+
+def test_no_toca_archivos_que_no_son_respaldos(tmp_path: Path):
+    """Lo más grave que podría hacer esta función: borrar algo ajeno. La
+    carpeta puede tener el log, notas, o cualquier cosa que el usuario dejó."""
+    _crear(
+        tmp_path,
+        "respaldo-20260101-0300.json",
+        "respaldo-20260102-0300.json",
+        "respaldo.log",
+        "notas.txt",
+        "respaldo-importante-a-mano.json",
+        "config.json",
+    )
+
+    _rotar(tmp_path, conservar=1)
+
+    quedan = sorted(p.name for p in tmp_path.iterdir())
+    assert quedan == [
+        "config.json",
+        "notas.txt",
+        "respaldo-20260102-0300.json",
+        "respaldo-importante-a-mano.json",
+        "respaldo.log",
+    ]
+
+
+def test_no_borra_nada_si_hay_menos_del_tope(tmp_path: Path):
+    _crear(tmp_path, "respaldo-20260101-0300.json", "respaldo-20260102-0300.json")
+
+    assert _rotar(tmp_path, conservar=30) == []
+    assert len(list(tmp_path.glob("*.json"))) == 2
+
+
+def test_conservar_cero_no_borra_nada(tmp_path: Path):
+    """Guardia contra un error de configuración: un cero mal puesto no puede
+    significar "bórralos todos"."""
+    _crear(tmp_path, "respaldo-20260101-0300.json")
+
+    assert _rotar(tmp_path, conservar=0) == []
+    assert len(list(tmp_path.glob("*.json"))) == 1
+
+
+def test_una_carpeta_vacia_no_revienta(tmp_path: Path):
+    assert _rotar(tmp_path, conservar=5) == []
 
 
 def test_se_rechaza_un_formato_desconocido(db: Session, tmp_path: Path):

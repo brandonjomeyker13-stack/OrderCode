@@ -91,6 +91,12 @@ pertenece.
   el taller tiene en su poder se le asignó antes. Ambas fechas del periodo
   son inclusivas — dejar fuera el último día le restaría un día de trabajo
   al taller en cada corte.
+- **El ranking y su Excel son solo para administradores.** No es un tablero
+  de producción más: junta en una tabla cuánto se le paga a cada taller, que
+  es información de proveedores. El precio por unidad sigue visible en el
+  catálogo y en las asignaciones, donde es un parámetro de producción.
+  `tests/test_permisos.py` verifica el mapa de permisos en ambos sentidos:
+  que lo sensible esté cerrado y que la operación diaria siga abierta.
 - **La importación es en dos pasos y todo o nada.** `POST
   /importacion/previsualizar` no escribe nada: dice qué se crearía y qué está
   mal, con el número de fila del Excel. `POST /importacion/confirmar` crea, y
@@ -131,11 +137,21 @@ automáticas, así que esta es la única red de seguridad que hay:
 python -m scripts.respaldar
 ```
 
-Genera `respaldos/respaldo-AAAAMMDD-HHMM.json` con todo el contenido.
-**Guarda el archivo fuera de esta máquina** (Drive, disco externo): un respaldo
-que vive en el mismo lugar que se puede dañar no sirve de nada. La carpeta
-`respaldos/` está en `.gitignore` a propósito — esos archivos llevan datos
-personales de los clientes y hashes de contraseñas.
+Genera `respaldos/respaldo-AAAAMMDD-HHMM.json` con todo el contenido, y borra
+los que pasen de los 30 más recientes. La carpeta `respaldos/` está en
+`.gitignore` a propósito — esos archivos llevan datos personales de los
+clientes y hashes de contraseñas.
+
+**Para que corra solo:** `respaldar.bat` está hecho para el Programador de
+tareas de Windows. Escribe el resultado en `respaldos/respaldo.log` y devuelve
+código de salida 1 si algo falla, para que la tarea quede marcada como fallida
+en vez de fallar en silencio. Un respaldo vacío también cuenta como fallo: es
+peor que ninguno, porque da falsa sensación de seguridad.
+
+**Guarda las copias fuera de esta máquina** (Drive, disco externo): un
+respaldo que vive en el mismo lugar que se puede dañar no sirve de nada. La
+forma más simple es apuntar la carpeta `respaldos/` a un directorio que ya
+sincronice solo.
 
 Para restaurar (destructivo, pide confirmación escrita):
 

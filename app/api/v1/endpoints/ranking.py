@@ -5,10 +5,21 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id
+from app.core.deps import require_admin
 from app.db.session import get_db
+from app.models.usuario import Usuario
 from app.schemas.ranking import RankingTalleres
 from app.services.ranking_service import RankingService
 
+# Solo administradores. El ranking no es un tablero de producción más: junta
+# en una tabla cuánto se le paga a cada taller, que es información de
+# proveedores y suele ser reservada. Un operario que captura devoluciones no
+# necesita saber que un taller cobra más que otro -- y enterarse suele
+# terminar en una conversación incómoda para el dueño de la empresa.
+#
+# El precio por unidad sigue visible en el catálogo de productos y en las
+# asignaciones: ahí es un parámetro de producción, no una nómina de
+# proveedores. Si algún cliente pide taparlo también, se hace.
 router = APIRouter(prefix="/ranking", tags=["ranking"])
 
 
@@ -21,10 +32,11 @@ def ranking_de_talleres(
         default=None, description="Último día del corte (inclusive). Por defecto, hoy."
     ),
     empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Comparativa de talleres en un periodo: cuánto entregó cada uno, cuánto
-    se dañó, qué tan rápido y qué le queda pendiente.
+    se dañó, qué tan rápido y qué le queda pendiente. Solo administradores.
 
     El periodo es libre porque cada empresa cierra distinto -- quincenal,
     mensual, o por lote terminado. Ambas fechas son inclusivas: pedir del 1 al
@@ -44,9 +56,10 @@ def descargar_ranking_de_talleres(
     desde: date | None = Query(default=None),
     hasta: date | None = Query(default=None),
     empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """El mismo ranking, descargable en Excel.
+    """El mismo ranking, descargable en Excel. Solo administradores.
 
     Existe porque hay gente que necesita estos números y no tiene cuenta en
     la app: el contador, un socio, el archivo del mes. Las cuentas ya vienen
