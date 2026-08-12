@@ -105,7 +105,10 @@ class EmpresaService:
     # lotes->tipos_producto, tipos_producto->qr_codes) que pueden abortar un
     # cascade según cómo las resuelva el motor. Así el resultado es el mismo
     # en Postgres, en SQLite y en los tests.
-    _ORDEN_DE_BORRADO = (
+    # Público porque también lo usa scripts/sembrar_demo.py para rehacer la
+    # empresa de demostración. Tenerlo en un solo lugar es lo que garantiza
+    # que al agregar una tabla nueva no quede huérfana en ninguno de los dos.
+    ORDEN_DE_BORRADO = (
         Notificacion,
         Incidencia,
         Devolucion,
@@ -153,7 +156,7 @@ class EmpresaService:
             )
         )
 
-        for modelo in self._ORDEN_DE_BORRADO:
+        for modelo in self.ORDEN_DE_BORRADO:
             self.db.execute(
                 delete(modelo)
                 .where(modelo.empresa_id == empresa_id)

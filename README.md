@@ -168,6 +168,18 @@ y a las que no tienen atrasos no se les manda nada):
 python -m scripts.enviar_alertas
 ```
 
+**Empresa de demostración** — datos realistas para enseñar el producto, sin
+usar los de un cliente. Las fechas se calculan desde hoy, así que la demo
+nunca se ve vieja:
+
+```bash
+python -m scripts.sembrar_demo --rehacer
+```
+
+Solo toca la empresa llamada `Confecciones Andina S.A.S.` — no puede tocar
+datos reales por accidente. Trae dos usuarios (un admin y un operario) para
+poder mostrar en vivo que el operario no ve el ranking.
+
 **Probar el monitoreo de errores** — manda un error de prueba a Sentry usando
 la misma configuración que la app, para confirmar que la conexión funciona:
 

@@ -30,7 +30,7 @@ def db() -> Session:
     # SQLite ignora las llaves foráneas salvo que se pidan explícitamente.
     # Sin esto los tests pasarían aunque el código borrara filas en un orden
     # que Postgres rechazaría -- justo lo que hay que verificar al purgar una
-    # cuenta completa (ver EmpresaService._ORDEN_DE_BORRADO).
+    # cuenta completa (ver EmpresaService.ORDEN_DE_BORRADO).
     @event.listens_for(engine, "connect")
     def _activar_llaves_foraneas(conexion, _registro):
         conexion.execute("PRAGMA foreign_keys=ON")
