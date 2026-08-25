@@ -32,3 +32,7 @@ htmlcov/
 # contraseñas. Nunca deben subirse a git.
 respaldos/
 *.respaldo.json
+
+# Registros de las tareas programadas (alertas.bat). Pueden contener
+# nombres de empresas y correos de destinatarios: no van al repositorio.
+logs/

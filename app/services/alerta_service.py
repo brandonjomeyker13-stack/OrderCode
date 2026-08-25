@@ -123,12 +123,29 @@ class AlertaService:
                 logger.warning("Empresa %s sin admins activos para avisar", empresa.id)
                 continue
 
+            entregado = False
             for usuario in destinatarios:
-                enviar_email(
+                if enviar_email(
                     usuario.email,
                     f"{resumen.total_atrasadas} lote(s) atrasado(s) en talleres",
                     self._cuerpo(empresa, usuario, resumen),
+                ):
+                    entregado = True
+
+            if not entregado:
+                # Si no salió NI UN correo, la empresa no se marca como
+                # avisada: así el siguiente intento reintenta en vez de
+                # saltarla durante 20 horas. Antes se marcaba pase lo que
+                # pase, y entonces una caída de Resend -- o simplemente la
+                # clave sin configurar -- costaba el aviso del día entero
+                # sin que nadie se enterara.
+                logger.error(
+                    "No se pudo avisar a ningún admin de la empresa %s "
+                    "(%s atrasos) -- se reintentará en la próxima corrida",
+                    empresa.id,
+                    resumen.total_atrasadas,
                 )
+                continue
 
             empresa.ultima_alerta_at = ahora
             self.db.commit()

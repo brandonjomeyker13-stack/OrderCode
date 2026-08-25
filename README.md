@@ -168,6 +168,22 @@ y a las que no tienen atrasos no se les manda nada):
 python -m scripts.enviar_alertas
 ```
 
+**Para que corra solo:** `alertas.bat`, en el Programador de tareas de Windows,
+una vez al día. Deja el resultado en `logs/alertas.log`.
+
+Dos cosas que lo dejan mudo sin que parezca roto: si falta `RESEND_API_KEY` no
+sale ningún correo (queda avisado en el log), y si nadie ejecuta el script no
+pasa absolutamente nada — las alertas se ven en `GET /alertas`, pero el correo
+solo existe cuando esto corre.
+
+Si no se logra entregar ni un correo, la empresa **no** se marca como avisada:
+así el siguiente intento reintenta en vez de saltársela 20 horas. Una caída de
+Resend no puede costar el aviso del día.
+
+> Ojo con dónde corre: mientras esté en el Programador de tareas de tu PC, los
+> clientes solo reciben sus alertas si tu computador estuvo encendido. Para un
+> cliente que dependa de esto a diario hay que moverlo a un servidor.
+
 **Empresa de demostración** — datos realistas para enseñar el producto, sin
 usar los de un cliente. Las fechas se calculan desde hoy, así que la demo
 nunca se ve vieja:

@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.models.empresa import Empresa
-from app.models.enums import TipoIncidencia
+from app.models.enums import RolUsuario, TipoIncidencia
 from app.models.lote import Lote
 from app.models.taller import Taller
 from app.models.usuario import Usuario
@@ -215,3 +215,64 @@ def test_no_avisa_a_empresas_pausadas(
     with patch(RUTA_CORREO) as correo:
         assert AlertaService(db).enviar_resumenes_pendientes(hoy=HOY) == []
     correo.assert_not_called()
+
+
+# --- Cuando el correo no sale ---
+
+def test_si_no_sale_ningun_correo_no_se_marca_como_avisada(
+    db: Session, empresa: Empresa, admin: Usuario, lote: Lote, taller: Taller
+):
+    """`enviar_email` devuelve False si Resend falla o si falta la clave.
+
+    Antes se marcaba la empresa como avisada pase lo que pase, así que ese
+    fallo se comía la ventana de 20 horas y el aviso del día se perdía en
+    silencio. Fue justo lo que pasó en producción: el log decía "enviado a 1
+    empresa" sin haber mandado nada.
+    """
+    _asignar(db, empresa, lote, taller, 100, dias_atras=30)
+
+    with patch(RUTA_CORREO, return_value=False):
+        enviados = AlertaService(db).enviar_resumenes_pendientes(hoy=HOY)
+
+    assert enviados == []
+    assert empresa.ultima_alerta_at is None, "se quemó la ventana sin haber enviado"
+
+
+def test_reintenta_en_la_corrida_siguiente_si_fallo(
+    db: Session, empresa: Empresa, admin: Usuario, lote: Lote, taller: Taller
+):
+    """La consecuencia práctica del arreglo: un fallo pasajero no cuesta el
+    aviso del día. La siguiente corrida vuelve a intentarlo."""
+    _asignar(db, empresa, lote, taller, 100, dias_atras=30)
+
+    with patch(RUTA_CORREO, return_value=False):
+        AlertaService(db).enviar_resumenes_pendientes(hoy=HOY)
+
+    with patch(RUTA_CORREO, return_value=True) as correo:
+        enviados = AlertaService(db).enviar_resumenes_pendientes(hoy=HOY)
+
+    assert enviados == [empresa.id]
+    correo.assert_called_once()
+
+
+def test_basta_con_que_le_llegue_a_un_admin(
+    db: Session, empresa: Empresa, admin: Usuario, lote: Lote, taller: Taller
+):
+    """Con varios administradores, que uno de los correos rebote no puede
+    dejar a los demás sin aviso ni disparar un reintento innecesario."""
+    segundo = Usuario(
+        empresa_id=empresa.id,
+        nombre="Segundo Admin",
+        email="segundo@prueba.com",
+        password_hash=admin.password_hash,
+        rol=RolUsuario.ADMIN,
+    )
+    db.add(segundo)
+    db.commit()
+    _asignar(db, empresa, lote, taller, 100, dias_atras=30)
+
+    with patch(RUTA_CORREO, side_effect=[False, True]):
+        enviados = AlertaService(db).enviar_resumenes_pendientes(hoy=HOY)
+
+    assert enviados == [empresa.id]
+    assert empresa.ultima_alerta_at is not None
