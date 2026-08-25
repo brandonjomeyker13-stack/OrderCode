@@ -27,7 +27,13 @@ def crear_asignacion(
     data: AsignacionTallerCreate,
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        # La columna es String(255): sin este tope, una clave más larga
+        # pasa la validación y revienta como 500 al escribir en la base.
+        max_length=255,
+    ),
 ):
     return AsignacionTallerService(db).crear(empresa_id, data, idempotency_key)
 
@@ -90,7 +96,13 @@ def registrar_devolucion(
     data: AsignacionTallerRegistrarDevolucion,
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        # La columna es String(255): sin este tope, una clave más larga
+        # pasa la validación y revienta como 500 al escribir en la base.
+        max_length=255,
+    ),
 ):
     return AsignacionTallerService(db).registrar_devolucion(asignacion_id, empresa_id, data, idempotency_key)
 

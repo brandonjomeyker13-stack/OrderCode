@@ -192,8 +192,10 @@ nunca se ve vieja:
 python -m scripts.sembrar_demo --rehacer
 ```
 
-Solo toca la empresa llamada `Confecciones Andina S.A.S.` — no puede tocar
-datos reales por accidente. Trae dos usuarios (un admin y un operario) para
+Solo toca la empresa llamada `Confecciones Andina S.A.S.`, y antes de borrar
+muestra qué contiene y pide escribir `BORRAR` — para que el día que un cliente
+real se llame igual, se vea antes de que sea tarde. `--forzar` salta la
+pregunta. Trae dos usuarios (un admin y un operario) para
 poder mostrar en vivo que el operario no ve el ranking.
 
 **Probar el monitoreo de errores** — manda un error de prueba a Sentry usando

@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/notificaciones.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id
@@ -40,10 +40,16 @@ def marcar_todas_leidas(
 
 @router.post("/{aviso_id}/leer", status_code=204)
 def marcar_leida(
-    aviso_id: str,
+    aviso_id: str = Path(max_length=150),
+    empresa_id: int = Depends(get_empresa_id),
     usuario: Usuario = Depends(get_current_usuario),
     db: Session = Depends(get_db),
 ):
     """`aviso_id` es el campo `id` del aviso (una clave como
-    "lote_atrasado:asignacion:42"), no un número. Es idempotente."""
-    CentroNotificacionesService(db).marcar_leida(usuario.id, aviso_id)
+    "lote_atrasado:asignacion:42"), no un número.
+
+    Es idempotente, y una clave que no corresponda a ningún aviso actual se
+    ignora sin error: el aviso pudo desaparecer entre que se cargó la pantalla
+    y el usuario hizo clic.
+    """
+    CentroNotificacionesService(db).marcar_leida(empresa_id, usuario.id, aviso_id)

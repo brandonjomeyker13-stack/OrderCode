@@ -4,6 +4,7 @@ Crea una empresa de demostración con datos realistas, para enseñar el producto
     python -m scripts.sembrar_demo              # la crea
     python -m scripts.sembrar_demo --rehacer    # la borra y la vuelve a crear
     python -m scripts.sembrar_demo --borrar     # solo la borra
+    ... --forzar                                # sin pedir confirmación
 
 Por qué existe: con los datos reales de hoy, el ranking sale en ceros y con el
 aviso rojo de "sin tarifa", porque las asignaciones viejas son anteriores a
@@ -22,8 +23,9 @@ import sys
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
+from app.core.config import settings
 from app.core.fechas import hoy_local, zona
 from app.core.security import hash_password
 from app.db.session import SessionLocal
@@ -54,6 +56,10 @@ logger = logging.getLogger("demo")
 NOMBRE_DEMO = "Confecciones Andina S.A.S."
 EMAIL_ADMIN = "demo@orderscode.com"
 EMAIL_OPERARIO = "operario@orderscode.com"
+
+# Palabra que hay que escribir para confirmar un borrado, igual que en
+# scripts/restaurar.py.
+CONFIRMACION = "BORRAR"
 
 # (nombre, número, teléfono, correo, dirección, sigue activo)
 _TALLERES = (
@@ -129,6 +135,57 @@ def _instante(dias_atras: int) -> datetime:
 
 def _fecha(dias_atras: int):
     return hoy_local() - timedelta(days=dias_atras)
+
+
+def _destino_legible() -> str:
+    """A qué base apunta, sin exponer la contraseña en pantalla."""
+    url = settings.DATABASE_URL
+    return url.split("@", 1)[1] if "@" in url else url
+
+
+def _contenido_de(db, empresa_id: int) -> dict[str, int]:
+    """Cuántas filas tiene esa empresa, para poder ENSEÑAR qué se va a borrar
+    antes de borrarlo. Sin esto el script confía solo en el nombre, y el día
+    que un cliente real se llame igual se lleva sus datos por delante."""
+    conteos = {}
+    for modelo in EmpresaService.ORDEN_DE_BORRADO:
+        n = db.execute(
+            select(func.count()).select_from(modelo).where(modelo.empresa_id == empresa_id)
+        ).scalar_one()
+        if n:
+            conteos[modelo.__tablename__] = n
+    usuarios = db.execute(
+        select(func.count()).select_from(Usuario).where(Usuario.empresa_id == empresa_id)
+    ).scalar_one()
+    if usuarios:
+        conteos["usuarios"] = usuarios
+    return conteos
+
+
+def _confirmar_borrado(db, empresa, forzar: bool) -> bool:
+    """Muestra qué se va a borrar y pide confirmación escrita.
+
+    Mismo criterio que scripts/restaurar.py: una operación destructiva no se
+    ejecuta porque sí, se ejecuta porque alguien la leyó y la aceptó.
+    """
+    if forzar:
+        return True
+
+    conteos = _contenido_de(db, empresa.id)
+    logger.warning("Vas a BORRAR la empresa '%s' (id %s) con todo su contenido:",
+                   empresa.nombre, empresa.id)
+    if conteos:
+        for tabla, n in sorted(conteos.items()):
+            logger.warning("    %-28s %s", tabla, n)
+    else:
+        logger.warning("    (vacía)")
+    logger.warning("Base de datos: %s", _destino_legible())
+
+    respuesta = input(f'\nEscribe "{CONFIRMACION}" para continuar: ').strip()
+    if respuesta != CONFIRMACION:
+        logger.info("Cancelado, no se tocó nada.")
+        return False
+    return True
 
 
 def _borrar(db) -> bool:
@@ -314,6 +371,7 @@ def main() -> int:
     argumentos = sys.argv[1:]
     rehacer = "--rehacer" in argumentos
     solo_borrar = "--borrar" in argumentos
+    forzar = "--forzar" in argumentos
 
     clave = secrets.token_urlsafe(9)
     for arg in argumentos:
@@ -323,6 +381,11 @@ def main() -> int:
     db = SessionLocal()
     try:
         if solo_borrar or rehacer:
+            empresa = db.execute(
+                select(Empresa).where(Empresa.nombre == NOMBRE_DEMO)
+            ).scalars().first()
+            if empresa is not None and not _confirmar_borrado(db, empresa, forzar):
+                return 1
             if _borrar(db):
                 logger.info("Empresa de demostración anterior borrada.")
             else:

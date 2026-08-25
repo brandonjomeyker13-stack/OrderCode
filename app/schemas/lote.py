@@ -4,13 +4,13 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import EstadoLote
-from app.schemas.common import TimestampSchema
+from app.schemas.common import MAX_UNIDADES, TimestampSchema
 from app.schemas.tipo_producto import TipoProductoOut
 
 
 class LoteCreate(BaseModel):
     tipo_producto_id: int
-    cantidad_total: int = Field(gt=0)
+    cantidad_total: int = Field(gt=0, le=MAX_UNIDADES)
     fecha_registro: date
 
 
@@ -18,7 +18,7 @@ class LoteUpdate(BaseModel):
     """Corrección de un error de captura -- no cambia el estado del lote,
     eso ya tiene sus propios flujos (asignar, devolver, cerrar_hacia_cliente)."""
 
-    cantidad_total: int | None = Field(default=None, gt=0)
+    cantidad_total: int | None = Field(default=None, gt=0, le=MAX_UNIDADES)
     fecha_registro: date | None = None
 
 

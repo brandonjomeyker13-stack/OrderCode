@@ -5,21 +5,21 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import CanalNotificacion, EstadoAsignacion
-from app.schemas.common import TimestampSchema
+from app.schemas.common import MAX_UNIDADES, TimestampSchema
 from app.schemas.taller import TallerOut
 
 
 class AsignacionTallerCreate(BaseModel):
     lote_id: int
     taller_id: int
-    cantidad_asignada: int = Field(gt=0)
+    cantidad_asignada: int = Field(gt=0, le=MAX_UNIDADES)
     fecha_asignacion: date
 
 
 class AsignacionTallerRegistrarDevolucion(BaseModel):
     """Se usa en el endpoint específico de 'registrar devolución', no en un
     update genérico, porque este evento tiene reglas propias (ver service)."""
-    cantidad_devuelta: int = Field(ge=0)
+    cantidad_devuelta: int = Field(ge=0, le=MAX_UNIDADES)
     fecha_devolucion: datetime
 
 
@@ -27,7 +27,7 @@ class AsignacionTallerUpdate(BaseModel):
     """Corrección de un error de captura -- solo se permite mientras la
     asignación sigue "pristina" (sin devolución ni merma registrada)."""
     taller_id: int | None = None
-    cantidad_asignada: int | None = Field(default=None, gt=0)
+    cantidad_asignada: int | None = Field(default=None, gt=0, le=MAX_UNIDADES)
     fecha_asignacion: date | None = None
     # Para arreglar un precio mal digitado en el producto DESPUÉS de haber
     # asignado. Corrige solo esta asignación, no toca el catálogo.

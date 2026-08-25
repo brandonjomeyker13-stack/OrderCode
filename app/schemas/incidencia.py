@@ -5,13 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import TipoIncidencia
 from app.schemas.asignacion_taller import AsignacionTallerOut
-from app.schemas.common import TimestampSchema
+from app.schemas.common import MAX_UNIDADES, TimestampSchema
 
 
 class IncidenciaCreate(BaseModel):
     asignacion_id: int
     tipo: TipoIncidencia
-    cantidad_afectada: int = Field(gt=0)
+    cantidad_afectada: int = Field(gt=0, le=MAX_UNIDADES)
     descripcion: str | None = Field(default=None, max_length=1000)
     fecha: date
 

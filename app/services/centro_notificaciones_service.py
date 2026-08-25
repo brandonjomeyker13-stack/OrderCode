@@ -135,16 +135,32 @@ class CentroNotificacionesService:
         )
         return set(self.db.execute(stmt).scalars().all())
 
-    def marcar_leida(self, usuario_id: int, clave: str) -> None:
-        """Idempotente: marcar dos veces lo mismo no falla ni duplica."""
+    def marcar_leida(self, empresa_id: int, usuario_id: int, clave: str) -> bool:
+        """Marca un aviso como leído. Devuelve si escribió algo.
+
+        Solo acepta claves que correspondan a un aviso que EXISTE ahora mismo
+        para este usuario. Sin esa comprobación, la clave era texto libre: un
+        cliente con un bucle podía insertar filas ilimitadas en
+        `notificaciones_leidas`, y una clave más larga que la columna reventaba
+        como 500.
+
+        Una clave desconocida no es un error: el aviso pudo desaparecer entre
+        que la pantalla se cargó y el usuario hizo clic (por ejemplo, el taller
+        entregó el lote atrasado). Se ignora en silencio y el endpoint sigue
+        siendo idempotente.
+        """
         if clave in self._claves_leidas(usuario_id):
-            return
+            return False
+        if clave not in {a.id for a in self.listar(empresa_id, usuario_id).avisos}:
+            return False
+
         self.db.add(
             NotificacionLeida(
                 usuario_id=usuario_id, clave=clave, leida_at=datetime.now(timezone.utc)
             )
         )
         self.db.commit()
+        return True
 
     def marcar_todas_leidas(self, empresa_id: int, usuario_id: int) -> int:
         """Marca las que existen AHORA. Un aviso que aparezca después seguirá

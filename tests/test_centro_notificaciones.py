@@ -10,12 +10,14 @@ from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.empresa import Empresa
 from app.models.enums import RolUsuario, TipoIncidencia
 from app.models.lote import Lote
+from app.models.notificacion_leida import NotificacionLeida
 from app.models.taller import Taller
 from app.models.usuario import Usuario
 from app.schemas.asignacion_taller import (
@@ -165,7 +167,7 @@ def test_marcar_leida_persiste(
     servicio = CentroNotificacionesService(db)
     aviso = servicio.listar(empresa.id, admin.id).avisos[0]
 
-    servicio.marcar_leida(admin.id, aviso.id)
+    servicio.marcar_leida(empresa.id, admin.id, aviso.id)
 
     centro = servicio.listar(empresa.id, admin.id)
     assert centro.avisos[0].leida is True
@@ -179,8 +181,8 @@ def test_marcar_leida_es_idempotente(
     servicio = CentroNotificacionesService(db)
     aviso = servicio.listar(empresa.id, admin.id).avisos[0]
 
-    servicio.marcar_leida(admin.id, aviso.id)
-    servicio.marcar_leida(admin.id, aviso.id)
+    servicio.marcar_leida(empresa.id, admin.id, aviso.id)
+    servicio.marcar_leida(empresa.id, admin.id, aviso.id)
 
     assert servicio.listar(empresa.id, admin.id).no_leidas == 0
 
@@ -212,7 +214,9 @@ def test_lo_leido_es_por_usuario(
     db.commit()
 
     servicio = CentroNotificacionesService(db)
-    servicio.marcar_leida(admin.id, servicio.listar(empresa.id, admin.id).avisos[0].id)
+    servicio.marcar_leida(
+        empresa.id, admin.id, servicio.listar(empresa.id, admin.id).avisos[0].id
+    )
 
     assert servicio.listar(empresa.id, admin.id).no_leidas == 0
     assert servicio.listar(empresa.id, otro.id).no_leidas == 1
@@ -228,3 +232,29 @@ def test_un_aviso_nuevo_llega_sin_leer(
     _asignar_hace(db, empresa, lote, taller, dias=45, cantidad=50)
 
     assert servicio.listar(empresa.id, admin.id).no_leidas == 1
+
+
+def test_una_clave_inventada_no_escribe_nada(
+    db: Session, empresa: Empresa, admin: Usuario, lote: Lote, taller: Taller
+):
+    """Antes la clave era texto libre: un cliente con un bucle podía insertar
+    filas ilimitadas en notificaciones_leidas, y una clave más larga que la
+    columna reventaba como 500. Ahora solo se aceptan avisos que existen."""
+    servicio = CentroNotificacionesService(db)
+
+    assert servicio.marcar_leida(empresa.id, admin.id, "cualquier:cosa:99999") is False
+    assert servicio.marcar_leida(empresa.id, admin.id, "x" * 5000) is False
+
+    assert db.execute(select(func.count()).select_from(NotificacionLeida)).scalar_one() == 0
+
+
+def test_no_se_puede_marcar_un_aviso_de_otra_empresa(
+    db: Session, empresa: Empresa, admin: Usuario, lote: Lote, taller: Taller
+):
+    """La clave de otra empresa no existe entre MIS avisos, así que no entra."""
+    _asignar_hace(db, empresa, lote, taller, 30)
+    servicio = CentroNotificacionesService(db)
+    ajena = "lote_atrasado:asignacion:987654"
+
+    assert servicio.marcar_leida(empresa.id, admin.id, ajena) is False
+    assert db.execute(select(func.count()).select_from(NotificacionLeida)).scalar_one() == 0
