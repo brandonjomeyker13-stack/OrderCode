@@ -31,7 +31,24 @@ class AsignacionTallerUpdate(BaseModel):
     fecha_asignacion: date | None = None
     # Para arreglar un precio mal digitado en el producto DESPUÉS de haber
     # asignado. Corrige solo esta asignación, no toca el catálogo.
-    precio_unitario: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    #
+    # OJO con el null: como en el resto de campos de este schema, mandar null
+    # (u omitir el campo) significa "no cambies esto", NO "bórralo". El tipo
+    # admite null solo porque así se marca un campo opcional en Pydantic. Sin
+    # esta aclaración el front asume que null quita el precio, construye un
+    # botón de "quitar tarifa", recibe un 200 y no pasa nada.
+    precio_unitario: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=12,
+        decimal_places=2,
+        description=(
+            "Precio por unidad congelado en ESTA asignación. Omitirlo o "
+            "mandarlo como null no cambia nada: no existe forma de dejar una "
+            "asignación sin precio una vez tiene uno. Solo administradores, y "
+            "solo mientras la asignación no tenga devoluciones ni merma."
+        ),
+    )
 
 
 class DevolucionOut(TimestampSchema):
