@@ -3,7 +3,7 @@
 Protección contra doble clic: mandar la misma operación dos veces con la
 misma Idempotency-Key no debe duplicar nada.
 """
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 from sqlalchemy import select
@@ -11,14 +11,20 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError
 from app.models.asignacion_taller import AsignacionTaller
+from app.models.devolucion import Devolucion
 from app.models.empresa import Empresa
 from app.models.enums import TipoIncidencia
 from app.models.lote import Lote
 from app.models.taller import Taller
-from app.schemas.asignacion_taller import AsignacionTallerCreate
+from app.schemas.asignacion_taller import (
+    AsignacionTallerCreate,
+    AsignacionTallerRegistrarDevolucion,
+)
 from app.schemas.incidencia import IncidenciaCreate
+from app.schemas.lote import LoteCreate
 from app.services.asignacion_taller_service import AsignacionTallerService
 from app.services.incidencia_service import IncidenciaService
+from app.services.lote_service import LoteService
 
 CLAVE = "clave-de-idempotencia-123"
 
@@ -88,3 +94,71 @@ def test_cada_clave_nueva_crea_su_recurso(
     segunda = servicio.crear(empresa.id, datos, idempotency_key="clave-b")
 
     assert primera.id != segunda.id
+
+
+def _datos_devolucion(cantidad: int) -> AsignacionTallerRegistrarDevolucion:
+    return AsignacionTallerRegistrarDevolucion(
+        cantidad_devuelta=cantidad,
+        fecha_devolucion=datetime(2026, 2, 5, tzinfo=timezone.utc),
+    )
+
+
+def test_reusar_la_clave_de_la_asignacion_en_su_devolucion_se_rechaza(
+    db: Session, empresa: Empresa, lote: Lote, taller: Taller
+):
+    """Regresión: crear una asignación y registrar su devolución producen las
+    dos un recurso de tipo "asignacion", así que el tipo no bastaba para
+    distinguirlas y solo se comparaba el tipo. Con la misma clave, la
+    devolución respondía 200 con la asignación intacta y no se guardaba
+    nunca -- el peor error posible, porque nadie se entera."""
+    servicio = AsignacionTallerService(db)
+    asignacion = servicio.crear(
+        empresa.id, _datos_asignacion(lote, taller), idempotency_key=CLAVE
+    )
+
+    with pytest.raises(ConflictError):
+        servicio.registrar_devolucion(
+            asignacion.id, empresa.id, _datos_devolucion(40), idempotency_key=CLAVE
+        )
+
+    guardada = db.get(AsignacionTaller, asignacion.id)
+    assert not guardada.cantidad_devuelta
+    assert db.execute(select(Devolucion)).scalars().all() == []
+
+
+def test_reintentar_la_misma_devolucion_no_la_duplica(
+    db: Session, empresa: Empresa, lote: Lote, taller: Taller
+):
+    """La otra cara: con su propia clave, reenviar la MISMA devolución (doble
+    clic, retry de red) devuelve el resultado anterior sin volver a sumar."""
+    servicio = AsignacionTallerService(db)
+    asignacion = servicio.crear(empresa.id, _datos_asignacion(lote, taller))
+
+    primera = servicio.registrar_devolucion(
+        asignacion.id, empresa.id, _datos_devolucion(40), idempotency_key=CLAVE
+    )
+    segunda = servicio.registrar_devolucion(
+        asignacion.id, empresa.id, _datos_devolucion(40), idempotency_key=CLAVE
+    )
+
+    assert primera.cantidad_devuelta == segunda.cantidad_devuelta == 40
+    assert len(db.execute(select(Devolucion)).scalars().all()) == 1
+
+
+def test_doble_clic_no_duplica_el_lote(db: Session, empresa: Empresa, lote: Lote):
+    """Regresión: crear lote era el único POST de creación sin protección, y
+    en producción quedaron cuatro lotes idénticos de un usuario que clicaba
+    creyendo que no funcionaba."""
+    servicio = LoteService(db)
+    datos = LoteCreate(
+        tipo_producto_id=lote.tipo_producto_id,
+        cantidad_total=250,
+        fecha_registro=date(2026, 2, 1),
+    )
+
+    primero = servicio.crear(empresa.id, datos, idempotency_key=CLAVE)
+    segundo = servicio.crear(empresa.id, datos, idempotency_key=CLAVE)
+
+    assert primero.id == segundo.id
+    # El del fixture más UNO: la segunda llamada no creó nada.
+    assert len(db.execute(select(Lote)).scalars().all()) == 2

@@ -6,24 +6,29 @@ from app.repositories.idempotency_key_repository import IdempotencyKeyRepository
 
 
 def resolver_recurso_previo(
-    db: Session, empresa_id: int, clave: str | None, recurso_tipo: str
+    db: Session, empresa_id: int, clave: str | None, recurso_tipo: str, ruta: str
 ) -> int | None:
     """Si esta `Idempotency-Key` ya se procesó, devuelve el recurso_id para
     reconstruir la respuesta sin repetir la operación (crear otra fila,
     sumar otra devolución, etc). None si es la primera vez o si no se mandó
     clave -- en ese caso el endpoint sigue como siempre.
 
-    `recurso_tipo` es el tipo que espera QUIEN LLAMA. Si la clave ya se usó
-    para otro tipo de recurso, es un error del cliente (reusó la misma clave
-    en endpoints distintos) y se rechaza: devolver el recurso de la otra
-    ruta daría una respuesta sin sentido, y peor, la operación real de esta
-    ruta nunca se ejecutaría sin que nadie se entere."""
+    `ruta` y `recurso_tipo` son los que espera QUIEN LLAMA. Si la clave ya
+    se usó en otra ruta o para otro tipo de recurso, es un error del cliente
+    (reusó la misma clave en endpoints distintos) y se rechaza: devolver el
+    recurso de la otra ruta daría una respuesta sin sentido, y peor, la
+    operación real de esta ruta nunca se ejecutaría sin que nadie se entere.
+
+    Comparar la RUTA es imprescindible, no un extra: crear una asignación y
+    registrar una devolución producen los dos un recurso de tipo
+    "asignacion", así que sin esto una clave reusada entre ambas devolvía
+    200 con la asignación intacta y la devolución no se guardaba nunca."""
     if not clave:
         return None
     registro = IdempotencyKeyRepository(db).buscar(empresa_id, clave)
     if registro is None:
         return None
-    if registro.recurso_tipo != recurso_tipo:
+    if registro.recurso_tipo != recurso_tipo or registro.ruta != ruta:
         raise ConflictError(
             "Esta Idempotency-Key ya se usó para otra operación distinta. "
             "Usa una clave nueva para cada operación."

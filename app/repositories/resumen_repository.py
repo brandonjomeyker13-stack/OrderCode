@@ -22,14 +22,21 @@ class ResumenRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def _merma_por_asignacion(self):
+    def _merma_por_asignacion(self, empresa_id: int):
         """Subconsulta con la merma acumulada de cada asignación. Se usa con
-        outer join para no perder las asignaciones que no tienen incidencias."""
+        outer join para no perder las asignaciones que no tienen incidencias.
+
+        Filtra por empresa como todo el resto (la regla de oro de
+        BaseRepository): hoy los totales saldrían bien igual porque
+        asignacion_id es única entre todas las empresas, pero sin el filtro
+        esto agrega la tabla de incidencias de TODOS los tenants para
+        responderle a uno solo."""
         return (
             select(
                 Incidencia.asignacion_id.label("asignacion_id"),
                 func.sum(Incidencia.cantidad_afectada).label("merma"),
             )
+            .where(Incidencia.empresa_id == empresa_id)
             .group_by(Incidencia.asignacion_id)
             .subquery()
         )
@@ -37,7 +44,7 @@ class ResumenRepository:
     def _unidades_pendientes(self, empresa_id: int) -> Select:
         """asignado - devuelto - merma, solo de lo que sigue en poder del
         taller (las cerradas aportan cero por definición)."""
-        merma = self._merma_por_asignacion()
+        merma = self._merma_por_asignacion(empresa_id)
         return (
             select(
                 func.coalesce(

@@ -25,6 +25,14 @@ RUTAS_SOLO_ADMIN = (
     ("/api/v1/importacion/previsualizar", "POST"),
     ("/api/v1/importacion/confirmar", "POST"),
     ("/api/v1/importacion/plantilla.xlsx", "GET"),
+    # Corregir datos ya capturados: cambiar una merma o la cantidad de un lote
+    # cambia lo que se le paga al taller, así que lo decide un admin. El
+    # operario captura; corregir la captura es otra cosa.
+    ("/api/v1/lotes/{lote_id}", "PATCH"),
+    ("/api/v1/lotes/{lote_id}", "DELETE"),
+    ("/api/v1/incidencias/{incidencia_id}", "PATCH"),
+    ("/api/v1/incidencias/{incidencia_id}", "DELETE"),
+    ("/api/v1/incidencias/{incidencia_id}/convertir-en-devolucion", "POST"),
 )
 
 # Rutas que deben seguir abiertas a los operarios: son su trabajo diario.
@@ -34,6 +42,13 @@ RUTAS_DE_TODOS = (
     ("/api/v1/asignaciones", "GET"),
     ("/api/v1/lotes", "GET"),
     ("/api/v1/talleres", "GET"),
+    # Registrar es el trabajo del operario en planta. Solo CORREGIR lo ya
+    # registrado es de admin (ver arriba): si se cierra también el registro,
+    # el operario no puede hacer nada y todo pasa por el dueño.
+    ("/api/v1/lotes", "POST"),
+    ("/api/v1/asignaciones", "POST"),
+    ("/api/v1/incidencias", "POST"),
+    ("/api/v1/asignaciones/{asignacion_id}/devolucion", "POST"),
 )
 
 

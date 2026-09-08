@@ -1,15 +1,20 @@
 # app/services/lote_service.py
 from datetime import date
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
 from app.models.enums import EstadoLote
 from app.models.lote import Lote
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.lote_repository import LoteRepository
 from app.repositories.tipo_producto_repository import TipoProductoRepository
 from app.schemas.lote import LoteConDisponibilidad, LoteCreate, LoteUpdate
+
+# Ver el comentario de RUTA_CREAR en asignacion_taller_service.
+RUTA_CREAR = "POST /lotes"
 
 
 class LoteService:
@@ -19,7 +24,19 @@ class LoteService:
         self.tipo_producto_repo = TipoProductoRepository(db)
         self.asignacion_repo = AsignacionTallerRepository(db)
 
-    def crear(self, empresa_id: int, data: LoteCreate) -> Lote:
+    def crear(
+        self, empresa_id: int, data: LoteCreate, idempotency_key: str | None = None
+    ) -> Lote:
+        """La Idempotency-Key es opcional, igual que en asignaciones: sin ella
+        el comportamiento es el de siempre. Con ella, el doble clic (o el
+        reintento del cliente tras un timeout de red que en realidad sí llegó)
+        devuelve el lote que ya se creó en vez de crear otro idéntico."""
+        recurso_id = resolver_recurso_previo(
+            self.db, empresa_id, idempotency_key, "lote", RUTA_CREAR
+        )
+        if recurso_id is not None:
+            return self.obtener(recurso_id, empresa_id)
+
         tipo_producto = self.tipo_producto_repo.get_by_id(data.tipo_producto_id, empresa_id)
         if tipo_producto is None:
             raise NotFoundError("Tipo de producto no encontrado")
@@ -27,7 +44,22 @@ class LoteService:
         lote = self.repo.create(
             Lote(empresa_id=empresa_id, estado=EstadoLote.PENDIENTE_ASIGNACION, **data.model_dump())
         )
-        self.db.commit()
+
+        # El lote y su clave se confirman en el mismo commit: si dos requests
+        # con la misma clave corren a la vez, el UNIQUE decide cuál gana y la
+        # que pierde reusa el resultado de la ganadora en vez de reventar.
+        reclamar_clave(self.db, empresa_id, idempotency_key, RUTA_CREAR, "lote", lote.id)
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            recurso_id = resolver_recurso_previo(
+                self.db, empresa_id, idempotency_key, "lote", RUTA_CREAR
+            )
+            if recurso_id is not None:
+                return self.obtener(recurso_id, empresa_id)
+            raise ValidationError("No se pudo crear el lote, intenta de nuevo")
+
         self.db.refresh(lote)
         return lote
 

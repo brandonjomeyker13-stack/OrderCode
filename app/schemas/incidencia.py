@@ -16,6 +16,18 @@ class IncidenciaCreate(BaseModel):
     fecha: date
 
 
+class IncidenciaUpdate(BaseModel):
+    """Corrección de una merma mal registrada. Todo opcional: se corrige solo
+    lo que se mandó. No incluye `asignacion_id` a propósito -- mover una merma
+    de una asignación a otra no es una corrección de captura, es rehacer dos
+    historiales a la vez; para eso se borra y se registra de nuevo."""
+
+    tipo: TipoIncidencia | None = None
+    cantidad_afectada: int | None = Field(default=None, gt=0, le=MAX_UNIDADES)
+    descripcion: str | None = Field(default=None, max_length=1000)
+    fecha: date | None = None
+
+
 class IncidenciaOut(TimestampSchema):
     model_config = ConfigDict(from_attributes=True)
 

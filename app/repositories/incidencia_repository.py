@@ -46,6 +46,21 @@ class IncidenciaRepository(BaseRepository[Incidencia]):
         )
         return {fila[0]: fila[1] for fila in self.db.execute(stmt).all()}
 
+    def existen_en_lote(self, lote_id: int, empresa_id: int) -> bool:
+        """¿Al lote todavía le queda alguna merma registrada? Decide si el
+        lote puede salir de `en_revision_incidencia` cuando un admin corrige
+        o descarta una: mientras quede una sin resolver, la marca se queda."""
+        stmt = (
+            select(Incidencia.id)
+            .join(AsignacionTaller, AsignacionTaller.id == Incidencia.asignacion_id)
+            .where(
+                AsignacionTaller.lote_id == lote_id,
+                Incidencia.empresa_id == empresa_id,
+            )
+            .limit(1)
+        )
+        return self.db.execute(stmt).first() is not None
+
     def get_by_id(self, id: int, empresa_id: int) -> Incidencia | None:
         stmt = (
             select(Incidencia)

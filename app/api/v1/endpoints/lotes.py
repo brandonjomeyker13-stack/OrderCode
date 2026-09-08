@@ -1,7 +1,7 @@
 # app/api/v1/endpoints/lotes.py
 from datetime import date
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_admin
@@ -19,8 +19,15 @@ def crear_lote(
     data: LoteCreate,
     empresa_id: int = Depends(get_empresa_id),
     db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        # La columna es String(255): sin este tope, una clave más larga
+        # pasa la validación y revienta como 500 al escribir en la base.
+        max_length=255,
+    ),
 ):
-    return LoteService(db).crear(empresa_id, data)
+    return LoteService(db).crear(empresa_id, data, idempotency_key)
 
 
 @router.get("/{lote_id}", response_model=LoteConDisponibilidad)

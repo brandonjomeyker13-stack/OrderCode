@@ -22,6 +22,13 @@ from app.schemas.asignacion_taller import (
 from app.schemas.filtros import FiltrosAsignacion
 from app.services.notificacion_taller_service import notificar_asignacion
 
+# Identifican la operación ante el registro de Idempotency-Key. Son
+# constantes y no literales sueltos porque el valor que se RECLAMA y el que
+# se RESUELVE tienen que coincidir exactamente: si se separan, la clave deja
+# de reconocerse y la operación se repite.
+RUTA_CREAR = "POST /asignaciones"
+RUTA_DEVOLUCION = "POST /asignaciones/{id}/devolucion"
+
 
 def construir_asignacion_out(
     asignacion: AsignacionTaller,
@@ -54,6 +61,12 @@ def recalcular_estado_asignacion(asignacion: AsignacionTaller, merma: int) -> No
         asignacion.estado = EstadoAsignacion.ENTREGADO_COMPLETO
     elif total_resuelto > 0:
         asignacion.estado = EstadoAsignacion.ENTREGADO_PARCIAL
+    else:
+        # Sin nada devuelto ni en merma la asignación está intacta. Hace falta
+        # decirlo explícitamente porque ahora un admin puede DESHACER una
+        # merma: sin esta rama, borrar la única merma de una asignación la
+        # dejaba marcada como "entregado_parcial" sin ninguna entrega detrás.
+        asignacion.estado = EstadoAsignacion.ASIGNADO
 
 
 class AsignacionTallerService:
@@ -114,7 +127,9 @@ class AsignacionTallerService:
     def crear(
         self, empresa_id: int, data: AsignacionTallerCreate, idempotency_key: str | None = None
     ) -> AsignacionTallerOut:
-        recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "asignacion")
+        recurso_id = resolver_recurso_previo(
+            self.db, empresa_id, idempotency_key, "asignacion", RUTA_CREAR
+        )
         if recurso_id is not None:
             return self.obtener_con_merma(recurso_id, empresa_id)
 
@@ -155,9 +170,11 @@ class AsignacionTallerService:
             lote.estado = EstadoLote.ASIGNADO_A_TALLER
 
         if not self._confirmar_con_idempotencia(
-            empresa_id, idempotency_key, "POST /asignaciones", "asignacion", asignacion.id
+            empresa_id, idempotency_key, RUTA_CREAR, "asignacion", asignacion.id
         ):
-            recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "asignacion")
+            recurso_id = resolver_recurso_previo(
+                self.db, empresa_id, idempotency_key, "asignacion", RUTA_CREAR
+            )
             if recurso_id is not None:
                 return self.obtener_con_merma(recurso_id, empresa_id)
             raise ValidationError("No se pudo completar la asignación, intenta de nuevo")
@@ -196,7 +213,9 @@ class AsignacionTallerService:
 
         Las unidades ya registradas como merma (ver IncidenciaService.crear)
         no se pueden devolver -- se descuentan del máximo permitido aquí."""
-        recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "asignacion")
+        recurso_id = resolver_recurso_previo(
+            self.db, empresa_id, idempotency_key, "asignacion", RUTA_DEVOLUCION
+        )
         if recurso_id is not None:
             return self.obtener_con_merma(recurso_id, empresa_id)
 
@@ -243,12 +262,14 @@ class AsignacionTallerService:
         asignacion.fecha_devolucion = data.fecha_devolucion
         recalcular_estado_asignacion(asignacion, merma)
 
-        self._recalcular_estado_lote(asignacion.lote_id, empresa_id)
+        self.recalcular_estado_lote(asignacion.lote_id, empresa_id)
 
         if not self._confirmar_con_idempotencia(
-            empresa_id, idempotency_key, "POST /asignaciones/{id}/devolucion", "asignacion", asignacion.id
+            empresa_id, idempotency_key, RUTA_DEVOLUCION, "asignacion", asignacion.id
         ):
-            recurso_id = resolver_recurso_previo(self.db, empresa_id, idempotency_key, "asignacion")
+            recurso_id = resolver_recurso_previo(
+                self.db, empresa_id, idempotency_key, "asignacion", RUTA_DEVOLUCION
+            )
             if recurso_id is not None:
                 return self.obtener_con_merma(recurso_id, empresa_id)
             raise ValidationError("No se pudo registrar la devolución, intenta de nuevo")
@@ -256,26 +277,64 @@ class AsignacionTallerService:
         self.db.refresh(asignacion)
         return self._con_merma(asignacion, empresa_id)
 
-    def _recalcular_estado_lote(self, lote_id: int, empresa_id: int) -> None:
+    def recalcular_estado_lote(
+        self, lote_id: int, empresa_id: int, *, salir_de_revision: bool = False
+    ) -> None:
         """
         Se ejecuta cada vez que cambia una devolución. Regla:
-        - Todas las asignaciones completas -> lote entregado_completo
+        - Todas las asignaciones completas Y el lote entero asignado ->
+          entregado_completo
         - Al menos una completa o parcial -> lote entregado_parcial
         - Ninguna con devolución -> el lote no cambia aquí (sigue en
           pendiente_asignacion o asignado_a_taller según corresponda)
+
+        Que el lote esté ENTERO asignado es condición aparte de que las
+        asignaciones estén completas, y no una redundancia: de un lote de
+        1000 se pueden mandar 100 a un taller y, al devolverlas, esa única
+        asignación queda completa mientras 900 unidades no han salido nunca
+        de bodega. Sin esta comprobación el lote se daba por entregado con
+        el 90% sin producir, y encima quedaba habilitado para cerrarse hacia
+        el cliente (`cerrar_hacia_cliente` exige justamente ese estado).
         """
         lote = self.lote_repo.get_by_id(lote_id, empresa_id)
-        asignaciones = self.repo.listar_por_lote(lote_id, empresa_id)
-        if not asignaciones:
+
+        # Estado terminal: el ciclo con el cliente ya se cerró y ninguna
+        # devolución posterior debería reabrirlo por su cuenta.
+        if lote.estado == EstadoLote.CERRADO_CLIENTE:
             return
 
-        if all(a.estado == EstadoAsignacion.ENTREGADO_COMPLETO for a in asignaciones):
-            lote.estado = EstadoLote.ENTREGADO_COMPLETO
-        elif any(
+        asignaciones = self.repo.listar_por_lote(lote_id, empresa_id)
+        if not asignaciones:
+            if salir_de_revision:
+                lote.estado = EstadoLote.PENDIENTE_ASIGNACION
+            return
+
+        todo_asignado = (
+            self.lote_repo.calcular_cantidad_asignada(lote_id, empresa_id) >= lote.cantidad_total
+        )
+        todas_completas = all(
+            a.estado == EstadoAsignacion.ENTREGADO_COMPLETO for a in asignaciones
+        )
+        hay_entregas = any(
             a.estado in (EstadoAsignacion.ENTREGADO_COMPLETO, EstadoAsignacion.ENTREGADO_PARCIAL)
             for a in asignaciones
-        ):
+        )
+
+        if todo_asignado and todas_completas:
+            lote.estado = EstadoLote.ENTREGADO_COMPLETO
+        elif lote.estado == EstadoLote.EN_REVISION_INCIDENCIA and not salir_de_revision:
+            # La marca de revisión la levanta un admin (`salir_de_revision`),
+            # no la devolución de otra asignación del mismo lote: antes
+            # cualquier entrega parcial posterior la borraba y la incidencia
+            # se perdía de vista, que es justo lo que IncidenciaService.crear
+            # dice querer evitar.
+            return
+        elif hay_entregas:
             lote.estado = EstadoLote.ENTREGADO_PARCIAL
+        elif salir_de_revision:
+            # Se descartó la única merma y no hay ninguna entrega todavía: el
+            # lote simplemente vuelve a estar en manos del taller.
+            lote.estado = EstadoLote.ASIGNADO_A_TALLER
     def listar(
         self,
         empresa_id: int,
