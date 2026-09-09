@@ -70,9 +70,17 @@ class LoteService:
         return lote
 
     def _armar(self, lote: Lote, asignado: int) -> LoteConDisponibilidad:
-        columnas = {c.name: getattr(lote, c.name) for c in lote.__table__.columns}
+        # Ver el comentario de construir_asignacion_out: los campos se
+        # enumeran para que una columna nueva no se filtre sola.
         return LoteConDisponibilidad(
-            **columnas,
+            id=lote.id,
+            empresa_id=lote.empresa_id,
+            cantidad_total=lote.cantidad_total,
+            fecha_registro=lote.fecha_registro,
+            fecha_entrega_cliente=lote.fecha_entrega_cliente,
+            estado=lote.estado,
+            created_at=lote.created_at,
+            updated_at=lote.updated_at,
             tipo_producto=lote.tipo_producto,
             cantidad_asignada_total=asignado,
             cantidad_disponible=lote.cantidad_total - asignado,

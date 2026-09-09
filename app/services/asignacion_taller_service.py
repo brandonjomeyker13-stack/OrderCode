@@ -41,9 +41,24 @@ def construir_asignacion_out(
     anidar la asignación dentro de IncidenciaOut), así los dos quedan
     calculados igual."""
     devuelta = asignacion.cantidad_devuelta or 0
-    columnas = {c.name: getattr(asignacion, c.name) for c in asignacion.__table__.columns}
+    # Los campos van uno por uno a propósito. Antes esto copiaba TODA columna
+    # de la tabla con **__table__.columns, y eso significa que cualquier
+    # columna que alguien agregue mañana aparece sola en la respuesta sin que
+    # nadie lo decida. En este schema eso es grave: `cantidad_asignada` es
+    # justo el dato que bodega no puede ver, y una fuga nueva anularía el
+    # conteo a ciegas sin que ninguna prueba lo note.
     return AsignacionTallerOut(
-        **columnas,
+        id=asignacion.id,
+        empresa_id=asignacion.empresa_id,
+        lote_id=asignacion.lote_id,
+        cantidad_asignada=asignacion.cantidad_asignada,
+        fecha_asignacion=asignacion.fecha_asignacion,
+        precio_unitario=asignacion.precio_unitario,
+        cantidad_devuelta=asignacion.cantidad_devuelta,
+        fecha_devolucion=asignacion.fecha_devolucion,
+        estado=asignacion.estado,
+        created_at=asignacion.created_at,
+        updated_at=asignacion.updated_at,
         taller=asignacion.taller,
         cantidad_merma=merma,
         cantidad_pendiente=asignacion.cantidad_asignada - devuelta - merma,

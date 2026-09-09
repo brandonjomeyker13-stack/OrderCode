@@ -36,9 +36,18 @@ class EmpresaService:
         if empresa is None:
             raise NotFoundError("Empresa no encontrada")
 
-        columnas = {c.name: getattr(empresa, c.name) for c in empresa.__table__.columns}
+        # Campos enumerados, no copiados de la tabla: `ultima_alerta_at` es
+        # una columna interna del programador de alertas y no tiene por qué
+        # salir en la respuesta solo porque exista en el modelo.
         return EmpresaConEstadisticas(
-            **columnas,
+            id=empresa.id,
+            nombre=empresa.nombre,
+            activo=empresa.activo,
+            dias_alerta_atraso=empresa.dias_alerta_atraso,
+            eliminacion_solicitada_at=empresa.eliminacion_solicitada_at,
+            usuario_propietario_id=empresa.usuario_propietario_id,
+            created_at=empresa.created_at,
+            updated_at=empresa.updated_at,
             total_talleres=self.repo.contar_talleres(empresa_id),
             total_usuarios=self.repo.contar_usuarios(empresa_id),
         )

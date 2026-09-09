@@ -25,6 +25,26 @@ from app.services.asignacion_taller_service import (
 RUTA_CREAR = "POST /incidencias"
 
 
+def construir_incidencia_out(
+    incidencia: Incidencia, asignacion: AsignacionTallerOut
+) -> IncidenciaOut:
+    """Punto único donde se arma IncidenciaOut. Los campos se enumeran en vez
+    de copiar las columnas de la tabla: así una columna nueva en el modelo no
+    aparece sola en la respuesta (ver construir_asignacion_out)."""
+    return IncidenciaOut(
+        id=incidencia.id,
+        empresa_id=incidencia.empresa_id,
+        asignacion_id=incidencia.asignacion_id,
+        tipo=incidencia.tipo,
+        cantidad_afectada=incidencia.cantidad_afectada,
+        descripcion=incidencia.descripcion,
+        fecha=incidencia.fecha,
+        created_at=incidencia.created_at,
+        updated_at=incidencia.updated_at,
+        asignacion=asignacion,
+    )
+
+
 class IncidenciaService:
     def __init__(self, db: Session):
         self.db = db
@@ -37,10 +57,9 @@ class IncidenciaService:
         self, incidencia: Incidencia, asignacion: AsignacionTaller, merma: int, empresa_id: int
     ) -> IncidenciaOut:
         notificado, canal = self.notificacion_repo.resultado(asignacion.id, empresa_id)
-        columnas = {c.name: getattr(incidencia, c.name) for c in incidencia.__table__.columns}
-        return IncidenciaOut(
-            **columnas,
-            asignacion=construir_asignacion_out(asignacion, merma, notificado, canal),
+        return construir_incidencia_out(
+            incidencia,
+            construir_asignacion_out(asignacion, merma, notificado, canal),
         )
 
     def crear(self, empresa_id: int, data: IncidenciaCreate, idempotency_key: str | None = None) -> IncidenciaOut:
@@ -107,13 +126,10 @@ class IncidenciaService:
         salida = []
         for incidencia in incidencias:
             notificado, canal = notificaciones.get(incidencia.asignacion_id, (False, None))
-            columnas = {
-                c.name: getattr(incidencia, c.name) for c in incidencia.__table__.columns
-            }
             salida.append(
-                IncidenciaOut(
-                    **columnas,
-                    asignacion=construir_asignacion_out(
+                construir_incidencia_out(
+                    incidencia,
+                    construir_asignacion_out(
                         incidencia.asignacion,
                         mermas.get(incidencia.asignacion_id, 0),
                         notificado,
