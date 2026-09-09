@@ -1,4 +1,6 @@
 # app/core/deps.py
+from collections.abc import Callable
+
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
@@ -48,7 +50,39 @@ def get_current_usuario(
     return usuario
 
 
-def require_admin(usuario: Usuario = Depends(get_current_usuario)) -> Usuario:
-    if usuario.rol != RolUsuario.ADMIN:
-        raise ForbiddenError("Esta acción requiere rol de administrador")
-    return usuario
+def requiere_roles(
+    *roles: RolUsuario, mensaje: str | None = None
+) -> Callable[..., Usuario]:
+    """Fábrica de guardias por rol.
+
+    Es una fábrica y no una función escrita a mano por cada rol porque con
+    varios roles hacen falta varias combinaciones, y cada copia de esta
+    comprobación es un sitio más donde se puede olvidar poner la guardia --
+    que es exactamente cómo se abren estos huecos en la práctica (ver el caso
+    del ranking en tests/test_permisos.py).
+
+    El mensaje se puede pasar a mano porque el texto lo lee un usuario: una
+    lista generada de nombres de rol se entiende peor que una frase escrita.
+    """
+    permitidos = frozenset(roles)
+    if not permitidos:
+        raise ValueError("requiere_roles necesita al menos un rol")
+
+    texto = mensaje or (
+        "Esta acción requiere uno de estos roles: "
+        + ", ".join(sorted(rol.value for rol in permitidos))
+    )
+
+    def guardia(usuario: Usuario = Depends(get_current_usuario)) -> Usuario:
+        if usuario.rol not in permitidos:
+            raise ForbiddenError(texto)
+        return usuario
+
+    return guardia
+
+
+# Se conserva el nombre y el mensaje exactos: lo declaran ~15 endpoints y
+# tests/test_permisos.py comprueba su presencia por identidad.
+require_admin = requiere_roles(
+    RolUsuario.ADMIN, mensaje="Esta acción requiere rol de administrador"
+)
