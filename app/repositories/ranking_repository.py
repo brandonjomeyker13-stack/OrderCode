@@ -11,9 +11,8 @@ número FIJO: no crecen con la cantidad de talleres. Traerse las asignaciones
 de cada taller por separado sería el N+1 clásico.
 """
 from datetime import date, datetime
-from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.fechas import rango_utc_entre
@@ -62,53 +61,6 @@ class RankingRepository:
         return {
             taller_id: (unidades, entregas)
             for taller_id, unidades, entregas in self.db.execute(stmt)
-        }
-
-    def monto_por_taller(
-        self, empresa_id: int, desde: date, hasta: date
-    ) -> dict[int, tuple[Decimal, int]]:
-        """{taller_id: (monto a pagar, unidades entregadas SIN tarifa)}.
-
-        Se multiplica cantidad x precio entrega por entrega, usando el precio
-        congelado en cada asignación. Sumar unidades y multiplicar al final
-        daría mal apenas un taller trabaje dos productos de distinto valor.
-
-        Las unidades sin tarifa se cuentan aparte en vez de tratarse como
-        gratis: un total bajo porque falta cargar un precio se ve idéntico a
-        un total bajo porque se trabajó poco, y son problemas muy distintos.
-        """
-        inicio, fin = rango_utc_entre(desde, hasta)
-        stmt = (
-            select(
-                AsignacionTaller.taller_id,
-                func.coalesce(
-                    func.sum(
-                        Devolucion.cantidad * func.coalesce(AsignacionTaller.precio_unitario, 0)
-                    ),
-                    0,
-                ),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (AsignacionTaller.precio_unitario.is_(None), Devolucion.cantidad),
-                            else_=0,
-                        )
-                    ),
-                    0,
-                ),
-            )
-            .select_from(Devolucion)
-            .join(AsignacionTaller, AsignacionTaller.id == Devolucion.asignacion_id)
-            .where(
-                Devolucion.empresa_id == empresa_id,
-                Devolucion.fecha >= inicio,
-                Devolucion.fecha < fin,
-            )
-            .group_by(AsignacionTaller.taller_id)
-        )
-        return {
-            taller_id: (Decimal(str(monto)), sin_tarifa)
-            for taller_id, monto, sin_tarifa in self.db.execute(stmt)
         }
 
     def merma_por_taller(self, empresa_id: int, desde: date, hasta: date) -> dict[int, int]:

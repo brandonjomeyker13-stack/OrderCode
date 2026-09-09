@@ -5,7 +5,6 @@ vuelta: un archivo que no se puede restaurar no es un respaldo, es un archivo.
 """
 import json
 from datetime import date, datetime, timezone
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -29,7 +28,6 @@ from scripts.respaldar import _rotar
 @pytest.fixture
 def con_datos(db: Session, empresa: Empresa, admin: Usuario, lote: Lote, taller: Taller):
     """Una empresa con operación real: asignación y devolución parcial."""
-    lote.tipo_producto.precio_unitario = Decimal("1500.50")
     db.commit()
     asignacion = AsignacionTallerService(db).crear(
         empresa.id,
@@ -99,20 +97,6 @@ def test_ida_y_vuelta_conserva_los_datos(db: Session, con_datos, tmp_path: Path)
         restaurada.cantidad_devuelta,
         restaurada.estado,
     ) == datos_originales
-
-
-def test_los_precios_sobreviven_el_viaje(db: Session, con_datos, tmp_path: Path):
-    """La plata viaja como texto en el JSON y tiene que volver como número
-    exacto. Si vuelve mal, el respaldo se restaura sin errores y los montos a
-    pagar quedan corridos -- la peor forma de fallar, porque nadie lo nota."""
-    archivo = tmp_path / "respaldo.json"
-    exportar(db, archivo)
-
-    importar(db, archivo)
-
-    restaurada = db.execute(select(AsignacionTaller)).scalars().one()
-    assert restaurada.precio_unitario == Decimal("1500.50")
-
 
 def test_restaurar_reemplaza_lo_que_hubiera(db: Session, con_datos, tmp_path: Path):
     """Restaurar deja la base como el archivo, no mezclada con lo que había:

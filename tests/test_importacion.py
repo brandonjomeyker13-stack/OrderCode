@@ -11,7 +11,6 @@ De ahí las dos garantías que se prueban aquí: nada se escribe sin pasar antes
 por la previsualización, y si una sola fila está mal no entra ninguna.
 """
 import io
-from decimal import Decimal
 
 import pytest
 from openpyxl import Workbook, load_workbook
@@ -87,16 +86,6 @@ def test_importa_talleres_y_productos(db: Session, empresa: Empresa):
     assert (resultado.talleres_creados, resultado.productos_creados) == (2, 2)
     assert _contar(db, Taller, empresa.id) == 2
     assert _contar(db, TipoProducto, empresa.id) == 2
-
-
-def test_los_precios_quedan_cargados(db: Session, empresa: Empresa):
-    ImportacionService(db).confirmar(
-        empresa.id, _archivo(productos=[("Chaqueta", "REF-001", 4500)])
-    )
-
-    producto = db.execute(select(TipoProducto)).scalars().one()
-    assert producto.precio_unitario == Decimal("4500.00")
-
 
 def test_el_numero_de_taller_lo_pone_la_app(db: Session, empresa: Empresa):
     """El archivo no trae número de taller: es un consecutivo del servidor."""
@@ -280,33 +269,6 @@ def test_se_puede_subir_solo_una_de_las_dos_hojas(db: Session, empresa: Empresa)
 
 
 # --- Precios: donde adivinar cuesta plata ---
-
-def test_rechaza_un_precio_ambiguo_en_vez_de_adivinar(db: Session, empresa: Empresa):
-    """'1.500' puede ser mil quinientos o uno con cinco. Elegir mal significa
-    pagarle al taller la milésima parte sin que nadie lo note."""
-    contenido = _archivo(productos=[("Chaqueta", "REF-001", "1.500")])
-
-    resumen = ImportacionService(db).previsualizar(empresa.id, contenido)
-
-    assert not resumen.se_puede_importar
-    assert "sin puntos ni comas" in _mensajes(resumen)
-
-
-def test_el_precio_es_opcional(db: Session, empresa: Empresa):
-    ImportacionService(db).confirmar(
-        empresa.id, _archivo(productos=[("Chaqueta", "REF-001", None)])
-    )
-
-    assert db.execute(select(TipoProducto.precio_unitario)).scalar_one() is None
-
-
-def test_rechaza_un_precio_negativo(db: Session, empresa: Empresa):
-    contenido = _archivo(productos=[("Chaqueta", "REF-001", -100)])
-
-    assert not ImportacionService(db).previsualizar(empresa.id, contenido).se_puede_importar
-
-
-# --- Archivos que no son lo que deberían ---
 
 def test_un_archivo_que_no_es_excel_da_un_mensaje_claro(db: Session, empresa: Empresa):
     resumen = ImportacionService(db).previsualizar(empresa.id, b"esto no es un excel")

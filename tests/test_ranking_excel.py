@@ -9,7 +9,6 @@ archivo.
 """
 import io
 from datetime import date, datetime, timezone
-from decimal import Decimal
 
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
@@ -79,8 +78,6 @@ def test_las_cifras_del_excel_son_las_mismas_de_la_pantalla(
 ):
     """La razón de reusar el servicio en vez de rehacer las consultas: que el
     archivo no pueda contradecir lo que el usuario tiene delante."""
-    lote.tipo_producto.precio_unitario = Decimal("1500")
-    db.commit()
     asignacion = _asignar(db, empresa, lote, taller, 200)
     _devolver(db, empresa, asignacion.id, 80)
 
@@ -90,13 +87,10 @@ def test_las_cifras_del_excel_son_las_mismas_de_la_pantalla(
 
     fila = _buscar_fila(hoja, taller.nombre)
     assert hoja.cell(row=fila, column=3).value == ranking.talleres[0].unidades_devueltas == 80
-    assert hoja.cell(row=fila, column=4).value == 120000
-    assert hoja.cell(row=fila, column=10).value == 120  # pendiente hoy
+    assert hoja.cell(row=fila, column=8).value == 120  # pendiente hoy
 
 
 def test_lleva_una_fila_de_totales(db: Session, empresa: Empresa, lote: Lote, taller: Taller):
-    lote.tipo_producto.precio_unitario = Decimal("1000")
-    db.commit()
     asignacion = _asignar(db, empresa, lote, taller, 100)
     _devolver(db, empresa, asignacion.id, 60)
 
@@ -104,7 +98,7 @@ def test_lleva_una_fila_de_totales(db: Session, empresa: Empresa, lote: Lote, ta
 
     fila = _buscar_fila(hoja, "TOTAL")
     assert hoja.cell(row=fila, column=3).value == 60
-    assert hoja.cell(row=fila, column=4).value == 60000
+    assert hoja.cell(row=fila, column=4).value == 0  # merma
 
 
 def test_el_periodo_queda_escrito_en_el_archivo(db: Session, empresa: Empresa, taller: Taller):
@@ -126,40 +120,7 @@ def test_sin_entregas_la_celda_de_dias_queda_vacia(
     hoja = _abrir(RankingService(db).exportar_excel(empresa.id, *FEBRERO)[0])
 
     fila = _buscar_fila(hoja, taller.nombre)
-    assert hoja.cell(row=fila, column=8).value is None
-
-
-def test_avisa_cuando_faltan_precios_por_cargar(
-    db: Session, empresa: Empresa, lote: Lote, taller: Taller
-):
-    """Sin el aviso, un total incompleto se ve igual que un total real y el
-    cliente le paga de menos a su taller sin enterarse."""
-    asignacion = _asignar(db, empresa, lote, taller, 100)  # producto sin precio
-    _devolver(db, empresa, asignacion.id, 40)
-
-    hoja = _abrir(RankingService(db).exportar_excel(empresa.id, *FEBRERO)[0])
-
-    textos = [
-        celda[0].value for celda in hoja.iter_rows(min_col=1, max_col=1) if celda[0].value
-    ]
-    assert any("ATENCIÓN" in t and "40 unidades" in t for t in textos)
-
-
-def test_sin_faltantes_no_aparece_el_aviso(
-    db: Session, empresa: Empresa, lote: Lote, taller: Taller
-):
-    lote.tipo_producto.precio_unitario = Decimal("1000")
-    db.commit()
-    asignacion = _asignar(db, empresa, lote, taller, 100)
-    _devolver(db, empresa, asignacion.id, 40)
-
-    hoja = _abrir(RankingService(db).exportar_excel(empresa.id, *FEBRERO)[0])
-
-    textos = [
-        celda[0].value for celda in hoja.iter_rows(min_col=1, max_col=1) if celda[0].value
-    ]
-    assert not any("ATENCIÓN" in t for t in textos)
-
+    assert hoja.cell(row=fila, column=7).value is None
 
 def test_un_nombre_de_taller_no_se_convierte_en_formula(
     db: Session, empresa: Empresa, lote: Lote
@@ -208,8 +169,8 @@ def test_no_se_cuelan_talleres_de_otra_empresa(
 def test_los_talleres_inactivos_quedan_marcados(
     db: Session, empresa: Empresa, lote: Lote, taller: Taller
 ):
-    """Aparecen porque se les puede deber plata, pero quien lea el archivo
-    tiene que saber que ese taller ya no está trabajando."""
+    """Aparecen porque todavía pueden tener prendas afuera, pero quien lea el
+    archivo tiene que saber que ese taller ya no está trabajando."""
     asignacion = _asignar(db, empresa, lote, taller, 100)
     _devolver(db, empresa, asignacion.id, 100)
     taller.activo = False
@@ -245,7 +206,7 @@ def test_la_merma_va_como_porcentaje_de_excel(
     hoja = _abrir(RankingService(db).exportar_excel(empresa.id, *FEBRERO)[0])
 
     fila = _buscar_fila(hoja, taller.nombre)
-    celda = hoja.cell(row=fila, column=6)
+    celda = hoja.cell(row=fila, column=5)
     assert celda.value == 0.2  # 20 de 100 terminadas
     assert "%" in celda.number_format
 

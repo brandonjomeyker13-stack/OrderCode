@@ -11,7 +11,6 @@ Colombia (UTC-5) todavía es el anterior, y el test estaría comprobando el
 huso horario en vez de la lógica.
 """
 from datetime import date, datetime, timezone
-from decimal import Decimal
 
 import pytest
 from sqlalchemy import event
@@ -298,119 +297,6 @@ def test_el_ranking_no_mezcla_datos_de_otra_empresa(
 
 
 # --- La plata ---
-
-def _poner_precio(db, lote, precio):
-    lote.tipo_producto.precio_unitario = Decimal(precio)
-    db.commit()
-
-
-def test_el_monto_a_pagar_sale_de_lo_entregado_en_el_periodo(
-    db: Session, empresa: Empresa, lote: Lote, taller: Taller
-):
-    """80 unidades a $1.500 = $120.000. Se paga lo ENTREGADO, no lo asignado:
-    el taller todavía tiene 120 unidades encima y esas no se le pagan aún."""
-    _poner_precio(db, lote, "1500")
-    asignacion = _asignar(db, empresa, lote, taller, 200)
-    _devolver(db, empresa, asignacion.id, 80, date(2026, 2, 5))
-
-    ranking = RankingService(db).talleres(empresa.id, *FEBRERO)
-
-    assert _fila(ranking, taller.id).monto_a_pagar == Decimal("120000")
-    assert ranking.total_a_pagar == Decimal("120000")
-
-
-def test_la_merma_no_se_paga(db: Session, empresa: Empresa, lote: Lote, taller: Taller):
-    """Las unidades dañadas no entran al monto: no son producto entregado."""
-    _poner_precio(db, lote, "1000")
-    asignacion = _asignar(db, empresa, lote, taller, 100)
-    _merma(db, empresa, asignacion.id, 30)
-    _devolver(db, empresa, asignacion.id, 70, date(2026, 2, 5))
-
-    fila = _fila(RankingService(db).talleres(empresa.id, *FEBRERO), taller.id)
-
-    assert fila.monto_a_pagar == Decimal("70000")
-
-
-def test_subir_el_precio_no_reescribe_lo_ya_asignado(
-    db: Session, empresa: Empresa, lote: Lote, taller: Taller
-):
-    """EL test de esta funcionalidad.
-
-    El precio se congela en la asignación. Si se leyera el precio actual del
-    producto, subir la tarifa en marzo cambiaría solo el monto del corte de
-    febrero que ya se pagó -- y nadie se enteraría hasta el descuadre.
-    """
-    _poner_precio(db, lote, "1000")
-    asignacion = _asignar(db, empresa, lote, taller, 100)
-    _devolver(db, empresa, asignacion.id, 50, date(2026, 2, 5))
-
-    _poner_precio(db, lote, "2000")  # la mano de obra subió
-
-    fila = _fila(RankingService(db).talleres(empresa.id, *FEBRERO), taller.id)
-
-    assert fila.monto_a_pagar == Decimal("50000"), "el cambio de precio alteró un corte pasado"
-
-
-def test_el_precio_nuevo_si_aplica_a_las_asignaciones_siguientes(
-    db: Session, empresa: Empresa, lote: Lote, taller: Taller
-):
-    """La otra mitad: lo que sale después del aumento sí se paga al precio
-    nuevo. Si no, congelar el precio sería simplemente ignorarlo."""
-    _poner_precio(db, lote, "1000")
-    vieja = _asignar(db, empresa, lote, taller, 100)
-    _devolver(db, empresa, vieja.id, 100, date(2026, 2, 5))
-
-    _poner_precio(db, lote, "2000")
-    nueva = _asignar(db, empresa, lote, taller, 100, dia=date(2026, 2, 10))
-    _devolver(db, empresa, nueva.id, 100, date(2026, 2, 15))
-
-    fila = _fila(RankingService(db).talleres(empresa.id, *FEBRERO), taller.id)
-
-    # 100 x 1000 + 100 x 2000
-    assert fila.monto_a_pagar == Decimal("300000")
-
-
-def test_las_unidades_sin_precio_se_reportan_aparte(
-    db: Session, empresa: Empresa, lote: Lote, taller: Taller
-):
-    """Sin esto, "faltó cargar el precio" y "trabajó poco" se ven idénticos:
-    un monto bajo. El usuario tiene que poder distinguirlos."""
-    asignacion = _asignar(db, empresa, lote, taller, 100)  # producto sin precio
-    _devolver(db, empresa, asignacion.id, 60, date(2026, 2, 5))
-
-    ranking = RankingService(db).talleres(empresa.id, *FEBRERO)
-    fila = _fila(ranking, taller.id)
-
-    assert fila.monto_a_pagar == Decimal("0")
-    assert fila.unidades_sin_tarifa == 60
-    assert ranking.total_unidades_sin_tarifa == 60
-
-
-def test_un_producto_con_precio_no_deja_unidades_sin_tarifa(
-    db: Session, empresa: Empresa, lote: Lote, taller: Taller
-):
-    _poner_precio(db, lote, "1500")
-    asignacion = _asignar(db, empresa, lote, taller, 100)
-    _devolver(db, empresa, asignacion.id, 60, date(2026, 2, 5))
-
-    assert _fila(RankingService(db).talleres(empresa.id, *FEBRERO), taller.id).unidades_sin_tarifa == 0
-
-
-def test_el_monto_respeta_el_corte(db: Session, empresa: Empresa, lote: Lote, taller: Taller):
-    """Lo pagado en la primera quincena no se vuelve a pagar en la segunda."""
-    _poner_precio(db, lote, "1000")
-    asignacion = _asignar(db, empresa, lote, taller, 200)
-    _devolver(db, empresa, asignacion.id, 50, date(2026, 2, 10))
-    _devolver(db, empresa, asignacion.id, 70, date(2026, 2, 20))
-
-    primera = RankingService(db).talleres(empresa.id, date(2026, 2, 1), date(2026, 2, 15))
-    segunda = RankingService(db).talleres(empresa.id, date(2026, 2, 16), date(2026, 2, 28))
-
-    assert primera.total_a_pagar == Decimal("50000")
-    assert segunda.total_a_pagar == Decimal("70000")
-
-
-# --- Rendimiento ---
 
 def test_no_dispara_una_consulta_por_taller(db: Session, empresa: Empresa, lote: Lote):
     """El ranking cruza cuatro tablas: hecho ingenuamente, sería una consulta

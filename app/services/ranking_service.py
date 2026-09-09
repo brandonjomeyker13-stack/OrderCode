@@ -44,7 +44,6 @@ class RankingService:
             raise ValidationError("La fecha 'desde' no puede ser posterior a 'hasta'")
 
         devuelto = self.repo.devuelto_por_taller(empresa_id, desde, hasta)
-        montos = self.repo.monto_por_taller(empresa_id, desde, hasta)
         merma = self.repo.merma_por_taller(empresa_id, desde, hasta)
         asignado = self.repo.asignado_por_taller(empresa_id, desde, hasta)
         tiempos = self.repo.tiempos_de_entrega(empresa_id, desde, hasta)
@@ -53,7 +52,6 @@ class RankingService:
         filas = []
         for taller in self.repo.talleres_de(empresa_id):
             unidades_devueltas, entregas = devuelto.get(taller.id, (0, 0))
-            monto, unidades_sin_tarifa = montos.get(taller.id, (Decimal("0"), 0))
             unidades_merma = merma.get(taller.id, 0)
             unidades_asignadas = asignado.get(taller.id, 0)
             unidades_pendientes = pendiente.get(taller.id, 0)
@@ -63,7 +61,7 @@ class RankingService:
             )
             # Un taller desactivado que tampoco se movió en el periodo solo
             # alarga la tabla. Si sí se movió, tiene que aparecer: puede que
-            # se le deba plata del corte anterior a haberlo desactivado.
+            # todavía tenga prendas de antes de haberlo desactivado.
             if not taller.activo and not hubo_movimiento:
                 continue
 
@@ -79,15 +77,12 @@ class RankingService:
                     entregas=entregas,
                     tasa_merma=self._tasa_merma(unidades_devueltas, unidades_merma),
                     dias_promedio_entrega=self._dias_promedio(tiempos.get(taller.id, [])),
-                    monto_a_pagar=monto,
-                    unidades_sin_tarifa=unidades_sin_tarifa,
                     unidades_pendientes=unidades_pendientes,
                 )
             )
 
-        # Quien más entregó, primero: es el orden en que se lee la tabla al
-        # pagar. El desempate por pendientes deja arriba al que más carga
-        # tiene cuando dos entregaron lo mismo.
+        # Quien más entregó, primero. El desempate por pendientes deja arriba
+        # al que más carga tiene cuando dos entregaron lo mismo.
         filas.sort(
             key=lambda f: (-f.unidades_devueltas, -f.unidades_pendientes, f.nombre.lower())
         )
@@ -98,8 +93,6 @@ class RankingService:
             talleres=filas,
             total_unidades_devueltas=sum(f.unidades_devueltas for f in filas),
             total_unidades_merma=sum(f.unidades_merma for f in filas),
-            total_a_pagar=sum((f.monto_a_pagar for f in filas), Decimal("0")),
-            total_unidades_sin_tarifa=sum(f.unidades_sin_tarifa for f in filas),
         )
 
     def exportar_excel(

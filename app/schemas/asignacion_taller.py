@@ -29,26 +29,6 @@ class AsignacionTallerUpdate(BaseModel):
     taller_id: int | None = None
     cantidad_asignada: int | None = Field(default=None, gt=0, le=MAX_UNIDADES)
     fecha_asignacion: date | None = None
-    # Para arreglar un precio mal digitado en el producto DESPUÉS de haber
-    # asignado. Corrige solo esta asignación, no toca el catálogo.
-    #
-    # OJO con el null: como en el resto de campos de este schema, mandar null
-    # (u omitir el campo) significa "no cambies esto", NO "bórralo". El tipo
-    # admite null solo porque así se marca un campo opcional en Pydantic. Sin
-    # esta aclaración el front asume que null quita el precio, construye un
-    # botón de "quitar tarifa", recibe un 200 y no pasa nada.
-    precio_unitario: Decimal | None = Field(
-        default=None,
-        ge=0,
-        max_digits=12,
-        decimal_places=2,
-        description=(
-            "Precio por unidad congelado en ESTA asignación. Omitirlo o "
-            "mandarlo como null no cambia nada: no existe forma de dejar una "
-            "asignación sin precio una vez tiene uno. Solo administradores, y "
-            "solo mientras la asignación no tenga devoluciones ni merma."
-        ),
-    )
 
 
 class DevolucionOut(TimestampSchema):
@@ -71,10 +51,6 @@ class AsignacionTallerOut(TimestampSchema):
     fecha_asignacion: date
     cantidad_devuelta: int | None
     fecha_devolucion: datetime | None
-    # Precio por unidad congelado al crear la asignación (copiado del tipo de
-    # producto). Viaja como texto en el JSON: "1500.00". None si la empresa
-    # no maneja precios o si el producto no tenía uno cargado ese día.
-    precio_unitario: Decimal | None
     estado: EstadoAsignacion
     taller: TallerOut
     # No son columnas reales -- se calculan en el service (suma de incidencias

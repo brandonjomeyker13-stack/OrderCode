@@ -123,7 +123,6 @@ class ImportacionService:
                 empresa_id=empresa_id,
                 nombre=fila.nombre,
                 referencia=fila.referencia,
-                precio_unitario=fila.precio_unitario,
                 qr_code_id=codigo.id,
             )
             for fila, codigo in zip(leido.productos, codigos)

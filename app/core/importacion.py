@@ -15,7 +15,6 @@ ignora columnas de más y no se cae por espacios o mayúsculas.
 import io
 import unicodedata
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -62,10 +61,6 @@ _COLUMNAS_TALLER = {
 _COLUMNAS_PRODUCTO = {
     "nombre": ("Nombre del producto", ("nombre del producto", "nombre", "producto")),
     "referencia": ("Referencia", ("referencia", "ref", "codigo", "referencia interna")),
-    "precio_unitario": (
-        "Precio por unidad (opcional)",
-        ("precio por unidad (opcional)", "precio por unidad", "precio", "valor", "tarifa"),
-    ),
 }
 _OBLIGATORIAS_TALLER = ("nombre", "telefono")
 _OBLIGATORIAS_PRODUCTO = ("nombre", "referencia")
@@ -95,7 +90,6 @@ class FilaProducto:
     fila: int
     nombre: str
     referencia: str
-    precio_unitario: Decimal | None
 
 
 @dataclass
@@ -118,40 +112,6 @@ def _valor(celda) -> str:
     if isinstance(bruto, float) and bruto.is_integer():
         return str(int(bruto))
     return str(bruto).strip()
-
-
-def _precio(celda, hoja: str, fila: int) -> tuple[Decimal | None, Problema | None]:
-    """Convierte la celda de precio, rechazando lo ambiguo.
-
-    Si la celda es un número, se toma tal cual. Si es texto, solo se acepta
-    cuando son dígitos puros: "1.500" podría ser mil quinientos (formato
-    colombiano) o uno con cinco (formato inglés), y elegir mal significa
-    pagarle al taller la milésima parte sin que nadie lo note. Ante la duda,
-    se pide corregirlo en vez de adivinar.
-    """
-    bruto = celda.value
-    if bruto is None or (isinstance(bruto, str) and not bruto.strip()):
-        return None, None
-
-    if isinstance(bruto, (int, float, Decimal)) and not isinstance(bruto, bool):
-        valor = Decimal(str(bruto))
-    else:
-        limpio = str(bruto).strip().replace("$", "").replace(" ", "")
-        if not limpio.isdigit():
-            return None, Problema(
-                hoja,
-                fila,
-                f"El precio '{bruto}' no se entiende. Escríbelo solo con números, "
-                f"sin puntos ni comas (ejemplo: 1500).",
-            )
-        valor = Decimal(limpio)
-
-    if valor < 0:
-        return None, Problema(hoja, fila, "El precio no puede ser negativo.")
-    try:
-        return valor.quantize(Decimal("0.01")), None
-    except InvalidOperation:
-        return None, Problema(hoja, fila, f"El precio '{bruto}' es demasiado grande.")
 
 
 def _buscar_hoja(libro, nombre: str):
@@ -279,7 +239,6 @@ def _leer_productos(hoja, resultado: ArchivoLeido) -> None:
         )
         return
 
-    columna_precio = mapa.get("precio_unitario")
     for numero, valores in _filas_con_datos(hoja, mapa, HOJA_PRODUCTOS, resultado):
         nombre = valores.get("nombre", "")
         referencia = valores.get("referencia", "")
@@ -300,17 +259,8 @@ def _leer_productos(hoja, resultado: ArchivoLeido) -> None:
             )
             continue
 
-        precio = None
-        if columna_precio is not None:
-            precio, problema = _precio(hoja.cell(row=numero, column=columna_precio), HOJA_PRODUCTOS, numero)
-            if problema is not None:
-                resultado.problemas.append(problema)
-                continue
-
         resultado.productos.append(
-            FilaProducto(
-                fila=numero, nombre=nombre, referencia=referencia, precio_unitario=precio
-            )
+            FilaProducto(fila=numero, nombre=nombre, referencia=referencia)
         )
 
 

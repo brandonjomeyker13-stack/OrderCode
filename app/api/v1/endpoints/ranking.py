@@ -11,15 +11,15 @@ from app.models.usuario import Usuario
 from app.schemas.ranking import RankingTalleres
 from app.services.ranking_service import RankingService
 
-# Solo administradores. El ranking no es un tablero de producción más: junta
-# en una tabla cuánto se le paga a cada taller, que es información de
-# proveedores y suele ser reservada. Un operario que captura devoluciones no
-# necesita saber que un taller cobra más que otro -- y enterarse suele
-# terminar en una conversación incómoda para el dueño de la empresa.
+# Solo administradores. El ranking no es un tablero de producción más: pone a
+# los talleres uno al lado del otro y los califica -- quién entrega más, quién
+# daña más, quién se demora. Eso es una evaluación de proveedores, y que
+# circule entre quienes capturan a diario suele terminar en una conversación
+# incómoda para el dueño de la empresa.
 #
-# El precio por unidad sigue visible en el catálogo de productos y en las
-# asignaciones: ahí es un parámetro de producción, no una nómina de
-# proveedores. Si algún cliente pide taparlo también, se hace.
+# La restricción se hereda de cuando la tabla además mostraba cuánto se le
+# pagaba a cada taller. Ya no hay plata en el sistema, así que al definir los
+# cuatro roles vale la pena volver a preguntarse quién debería verlo.
 router = APIRouter(prefix="/ranking", tags=["ranking"])
 
 

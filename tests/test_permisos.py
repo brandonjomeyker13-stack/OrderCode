@@ -8,16 +8,16 @@ un servidor ni emitir tokens, y aun así falla si alguien quita una guardia
 sin darse cuenta -- que es exactamente como se abren estos huecos.
 
 El caso que motivó este archivo: el ranking de talleres y su Excel quedaron
-abiertos a cualquier usuario cuando se les agregó el monto a pagar, así que
-un operario podía ver cuánto se le paga a cada taller.
+abiertos a cualquier usuario cuando se les agregó una cifra sensible, así
+que un operario podía ver el desempeño comparado de todos los talleres.
 """
 from fastapi.routing import APIRoute
 
 from app.core.deps import require_admin
 from app.main import app
 
-# Rutas que muestran plata: cuánto se le paga a cada taller. Es información
-# de proveedores, no un tablero de producción.
+# Rutas de administración: el desempeño comparado de los proveedores y la
+# carga masiva. No son el tablero del día a día de un operario.
 RUTAS_SOLO_ADMIN = (
     ("/api/v1/ranking/talleres", "GET"),
     ("/api/v1/ranking/talleres.xlsx", "GET"),

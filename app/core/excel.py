@@ -27,7 +27,6 @@ GRIS_FONDO = "F3F4F6"
 BLANCO = "FFFFFF"
 ROJO = "B91C1C"
 
-_MONEDA = '"$"#,##0.00'
 _ENTERO = "#,##0"
 _PORCENTAJE = "0.0%"
 _DECIMAL = "0.0"
@@ -37,12 +36,10 @@ _COLUMNAS = (
     ("Taller", 28, None),
     ("N° taller", 12, None),
     ("Unidades entregadas", 20, _ENTERO),
-    ("Total a pagar", 16, _MONEDA),
     ("Unidades en merma", 19, _ENTERO),
     ("% merma", 10, _PORCENTAJE),
     ("Entregas", 10, _ENTERO),
     ("Días promedio", 14, _DECIMAL),
-    ("Sin tarifa", 11, _ENTERO),
     ("Pendiente hoy", 14, _ENTERO),
 )
 
@@ -104,16 +101,14 @@ def _escribir_filas(hoja: Worksheet, ranking: RankingTalleres) -> int:
 
         valores = (
             (3, taller.unidades_devueltas),
-            (4, taller.monto_a_pagar),
-            (5, taller.unidades_merma),
+            (4, taller.unidades_merma),
             # Excel guarda los porcentajes como fracción: 0.034 se muestra
             # como 3,4%. Dividir acá deja la celda como un porcentaje de
             # verdad, que promedia y grafica bien si el usuario lo intenta.
-            (6, taller.tasa_merma / 100),
-            (7, taller.entregas),
-            (8, taller.dias_promedio_entrega),
-            (9, taller.unidades_sin_tarifa),
-            (10, taller.unidades_pendientes),
+            (5, taller.tasa_merma / 100),
+            (6, taller.entregas),
+            (7, taller.dias_promedio_entrega),
+            (8, taller.unidades_pendientes),
         )
         for columna, valor in valores:
             celda = hoja.cell(row=fila, column=columna)
@@ -123,9 +118,6 @@ def _escribir_filas(hoja: Worksheet, ranking: RankingTalleres) -> int:
             if valor is not None:
                 celda.value = valor
             celda.number_format = _COLUMNAS[columna - 1][2]
-
-        if taller.unidades_sin_tarifa > 0:
-            hoja.cell(row=fila, column=9).font = Font(bold=True, color=ROJO)
 
     return fila
 
@@ -138,9 +130,7 @@ def _escribir_totales(hoja: Worksheet, ranking: RankingTalleres, ultima_fila: in
     _texto(hoja.cell(row=fila, column=1), "TOTAL")
     totales = {
         3: ranking.total_unidades_devueltas,
-        4: ranking.total_a_pagar,
-        5: ranking.total_unidades_merma,
-        9: ranking.total_unidades_sin_tarifa,
+        4: ranking.total_unidades_merma,
     }
     # Las demás columnas no se totalizan a propósito: sumar días promedio o
     # porcentajes de merma daría un número sin significado.
@@ -157,16 +147,6 @@ def _escribir_totales(hoja: Worksheet, ranking: RankingTalleres, ultima_fila: in
 
 def _escribir_notas(hoja: Worksheet, ranking: RankingTalleres, fila_total: int) -> None:
     fila = fila_total + 2
-
-    if ranking.total_unidades_sin_tarifa > 0:
-        aviso = hoja.cell(row=fila, column=1)
-        _texto(
-            aviso,
-            f"ATENCIÓN: {ranking.total_unidades_sin_tarifa} unidades entregadas no tienen "
-            f"precio cargado. El total a pagar está incompleto.",
-        )
-        aviso.font = Font(bold=True, color=ROJO)
-        fila += 2
 
     nota = hoja.cell(row=fila, column=1)
     _texto(

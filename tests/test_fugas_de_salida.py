@@ -79,7 +79,6 @@ SUPERFICIE_PUBLICADA = {
             "lote_id",
             "cantidad_asignada",
             "fecha_asignacion",
-            "precio_unitario",
             "cantidad_devuelta",
             "fecha_devolucion",
             "estado",
