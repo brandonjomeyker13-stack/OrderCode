@@ -13,7 +13,6 @@ from app.core.config import settings
 from app.core.exceptions import UnauthorizedError, ValidationError
 from app.core.security import hash_password
 from app.models.asignacion_taller import AsignacionTaller
-from app.models.cliente import Cliente
 from app.models.empresa import Empresa
 from app.models.empresa_eliminada import EmpresaEliminada
 from app.models.enums import EstadoLote, RolUsuario
@@ -127,7 +126,6 @@ def test_la_purga_borra_todos_los_datos_personales(
             fecha_asignacion=date(2026, 2, 1),
         ),
     )
-    db.add(Cliente(empresa_id=empresa_id, nombre="Cliente Mayorista", telefono="3009998877"))
     db.commit()
 
     servicio = EmpresaService(db)
@@ -137,7 +135,7 @@ def test_la_purga_borra_todos_los_datos_personales(
     assert servicio.purgar_empresas_vencidas() == [empresa_id]
 
     for modelo in (
-        Empresa, Usuario, Taller, Cliente, Lote, TipoProducto, QRCode, AsignacionTaller
+        Empresa, Usuario, Taller, Lote, TipoProducto, QRCode, AsignacionTaller
     ):
         assert _contar(db, modelo) == 0, f"quedaron filas en {modelo.__tablename__}"
 

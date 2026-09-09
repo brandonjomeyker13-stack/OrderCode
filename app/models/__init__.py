@@ -14,7 +14,6 @@ from app.models.lote import Lote
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.incidencia import Incidencia
 from app.models.devolucion import Devolucion
-from app.models.cliente import Cliente
 from app.models.refresh_token import RefreshToken
 from app.models.idempotency_key import IdempotencyKey
 from app.models.password_reset_token import PasswordResetToken
@@ -35,7 +34,6 @@ __all__ = [
     "AsignacionTaller",
     "Incidencia",
     "Devolucion",
-    "Cliente",
     "RefreshToken",
     "IdempotencyKey",
     "PasswordResetToken",

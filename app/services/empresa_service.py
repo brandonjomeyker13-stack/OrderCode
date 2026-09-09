@@ -8,7 +8,6 @@ from app.core.config import settings
 from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.core.security import verify_password
 from app.models.asignacion_taller import AsignacionTaller
-from app.models.cliente import Cliente
 from app.models.devolucion import Devolucion
 from app.models.empresa import Empresa
 from app.models.empresa_eliminada import EmpresaEliminada
@@ -117,7 +116,6 @@ class EmpresaService:
         TipoProducto,
         QRCode,
         Taller,
-        Cliente,
         IdempotencyKey,
     )
 

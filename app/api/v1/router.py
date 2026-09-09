@@ -5,7 +5,6 @@ from app.api.v1.endpoints import (
     alertas,
     asignaciones,
     auth,
-    clientes,
     empresas,
     importacion,
     incidencias,
@@ -28,7 +27,6 @@ api_router.include_router(tipos_producto.router)
 api_router.include_router(lotes.router)
 api_router.include_router(asignaciones.router)
 api_router.include_router(incidencias.router)
-api_router.include_router(clientes.router)
 api_router.include_router(resumen.router)
 api_router.include_router(ranking.router)
 api_router.include_router(importacion.router)
