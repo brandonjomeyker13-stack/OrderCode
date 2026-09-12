@@ -8,6 +8,7 @@ from datetime import date
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401  -- registra todos los modelos en Base.metadata
 from app.core.security import hash_password
@@ -25,7 +26,18 @@ PASSWORD_DE_PRUEBA = "clave-de-prueba-123"
 
 @pytest.fixture
 def db() -> Session:
-    engine = create_engine("sqlite:///:memory:")
+    # StaticPool + check_same_thread para que una prueba pueda levantar un
+    # TestClient: FastAPI atiende la petición en OTRO hilo, y SQLite rechaza
+    # de plano una conexión creada en un hilo distinto. Con el pool por
+    # defecto cada hilo abriría además su propia base ":memory:" vacía, así
+    # que la prueba no vería ni la empresa ni el usuario que acaba de crear.
+    # Para las pruebas que llaman al service directo no cambia nada: siguen
+    # siendo una sola conexión a una base nueva por prueba.
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 
     # SQLite ignora las llaves foráneas salvo que se pidan explícitamente.
     # Sin esto los tests pasarían aunque el código borrara filas en un orden

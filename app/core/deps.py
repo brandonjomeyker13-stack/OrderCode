@@ -6,7 +6,12 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.exceptions import (
+    EMPRESA_INACTIVA,
+    ROL_INSUFICIENTE,
+    ForbiddenError,
+    UnauthorizedError,
+)
 from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.enums import RolUsuario
@@ -44,7 +49,8 @@ def get_current_usuario(
     # su access token (hasta 30 min) para que deje de poder usar la API.
     if not usuario.empresa.activo:
         raise ForbiddenError(
-            "El acceso de tu empresa aún no está activo. Contacta al administrador para activarlo."
+            "El acceso de tu empresa aún no está activo. Contacta al administrador para activarlo.",
+            codigo=EMPRESA_INACTIVA,
         )
 
     return usuario
@@ -75,7 +81,7 @@ def requiere_roles(
 
     def guardia(usuario: Usuario = Depends(get_current_usuario)) -> Usuario:
         if usuario.rol not in permitidos:
-            raise ForbiddenError(texto)
+            raise ForbiddenError(texto, codigo=ROL_INSUFICIENTE)
         return usuario
 
     return guardia

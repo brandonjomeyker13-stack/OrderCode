@@ -70,7 +70,12 @@ def handle_app_error(request: Request, exc: AppError):
     headers = {}
     if isinstance(exc, RateLimitedError):
         headers["Retry-After"] = str(exc.retry_after_seconds)
-    return JSONResponse(status_code=status_code, content={"detail": exc.message}, headers=headers)
+    cuerpo: dict[str, str] = {"detail": exc.message}
+    # Solo va si existe: las respuestas que ya tenían forma no la cambian, y
+    # el cliente puede distinguir sin tener que leer el texto del mensaje.
+    if exc.codigo:
+        cuerpo["codigo"] = exc.codigo
+    return JSONResponse(status_code=status_code, content=cuerpo, headers=headers)
 
 
 @app.exception_handler(Exception)
