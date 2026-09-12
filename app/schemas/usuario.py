@@ -11,7 +11,12 @@ class UsuarioCreate(BaseModel):
     nombre: str = Field(min_length=2, max_length=150)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    rol: RolUsuario = RolUsuario.OPERADOR
+    # Sin valor por defecto a propósito. Con dos roles, equivocarse costaba
+    # poco; con cuatro, uno de ellos (CORTE) ve todo lo que el conteo a ciegas
+    # le oculta a BODEGA. Que el admin elija explícitamente es más seguro que
+    # que el sistema adivine, y el error se ve como un 422 claro y no como un
+    # usuario creado con el rol que no era.
+    rol: RolUsuario
 
 
 class UsuarioUpdate(BaseModel):

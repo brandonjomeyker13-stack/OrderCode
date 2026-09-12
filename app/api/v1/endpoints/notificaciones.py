@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id
-from app.core.deps import get_current_usuario
+from app.core.deps import get_current_usuario, puede_ver_cantidades
 from app.db.session import get_db
 from app.models.usuario import Usuario
 from app.schemas.centro_notificaciones import CentroNotificaciones
@@ -15,6 +15,7 @@ router = APIRouter(prefix="/notificaciones", tags=["notificaciones"])
 @router.get("", response_model=CentroNotificaciones)
 def listar_notificaciones(
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(puede_ver_cantidades),
     usuario: Usuario = Depends(get_current_usuario),
     db: Session = Depends(get_db),
 ):
@@ -30,6 +31,7 @@ def listar_notificaciones(
 @router.post("/leer-todas", status_code=204)
 def marcar_todas_leidas(
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(puede_ver_cantidades),
     usuario: Usuario = Depends(get_current_usuario),
     db: Session = Depends(get_db),
 ):
@@ -42,6 +44,7 @@ def marcar_todas_leidas(
 def marcar_leida(
     aviso_id: str = Path(max_length=150),
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(puede_ver_cantidades),
     usuario: Usuario = Depends(get_current_usuario),
     db: Session = Depends(get_db),
 ):

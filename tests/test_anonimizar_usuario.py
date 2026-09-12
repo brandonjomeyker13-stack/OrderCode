@@ -27,7 +27,7 @@ def operario(db: Session, empresa: Empresa) -> Usuario:
         nombre="María Operaria",
         email="maria@prueba.com",
         password_hash=hash_password(PASSWORD_DE_PRUEBA),
-        rol=RolUsuario.OPERADOR,
+        rol=RolUsuario.CORTE,
     )
     db.add(usuario)
     db.commit()
@@ -83,7 +83,7 @@ def test_se_libera_el_correo_para_reutilizarlo(
             nombre="María Otra Vez",
             email="maria@prueba.com",
             password=PASSWORD_DE_PRUEBA,
-            rol=RolUsuario.OPERADOR,
+            rol=RolUsuario.CORTE,
         ),
     )
     assert nuevo.email == "maria@prueba.com"
@@ -99,7 +99,7 @@ def test_se_pueden_anonimizar_varios_sin_chocar(
         nombre="Pedro Operario",
         email="pedro@prueba.com",
         password_hash=hash_password(PASSWORD_DE_PRUEBA),
-        rol=RolUsuario.OPERADOR,
+        rol=RolUsuario.CORTE,
     )
     db.add(otro)
     db.commit()
@@ -137,7 +137,7 @@ def test_patch_no_puede_degradar_al_unico_admin(db: Session, empresa: Empresa, a
     PATCH bajándole el rol dejaba a la empresa sin ningún administrador."""
     with pytest.raises(ValidationError):
         UsuarioService(db).actualizar(
-            admin.id, empresa.id, UsuarioUpdate(rol=RolUsuario.OPERADOR)
+            admin.id, empresa.id, UsuarioUpdate(rol=RolUsuario.CORTE)
         )
 
     db.refresh(admin)

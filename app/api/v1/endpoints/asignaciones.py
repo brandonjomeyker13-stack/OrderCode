@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
-from app.core.deps import require_admin
+from app.core.deps import requiere_bodega, requiere_corte, requiere_operacion, require_admin
 from app.db.session import get_db
 from app.models.enums import EstadoAsignacion
 from app.models.usuario import Usuario
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/asignaciones", tags=["asignaciones"])
 def crear_asignacion(
     data: AsignacionTallerCreate,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
     idempotency_key: str | None = Header(
         default=None,
@@ -42,6 +43,7 @@ def crear_asignacion(
 def obtener_asignacion(
     asignacion_id: int,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_operacion),
     db: Session = Depends(get_db),
 ):
     return AsignacionTallerService(db).obtener_con_merma(asignacion_id, empresa_id)
@@ -72,7 +74,7 @@ def eliminar_asignacion(
 def reenviar_notificacion(
     asignacion_id: int,
     empresa_id: int = Depends(get_empresa_id),
-    _admin: Usuario = Depends(require_admin),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     """Reintenta manualmente el envío de la ficha técnica por WhatsApp --
@@ -85,6 +87,7 @@ def reenviar_notificacion(
 def listar_por_lote(
     lote_id: int,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     return AsignacionTallerService(db).listar_por_lote(lote_id, empresa_id)
@@ -95,6 +98,7 @@ def registrar_devolucion(
     asignacion_id: int,
     data: AsignacionTallerRegistrarDevolucion,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_bodega),
     db: Session = Depends(get_db),
     idempotency_key: str | None = Header(
         default=None,
@@ -121,6 +125,7 @@ def listar_asignaciones(
     ),
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_operacion),
     db: Session = Depends(get_db),
 ):
     """Todos los filtros son opcionales y se aplican en la base de datos.

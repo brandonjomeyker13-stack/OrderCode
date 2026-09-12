@@ -27,7 +27,11 @@ class Usuario(Base, TimestampMixin):
             values_callable=lambda enum_cls: [member.value for member in enum_cls],
         ),
         nullable=False,
-        default=RolUsuario.OPERADOR,
+        # Sin valor por defecto: las 13 construcciones de Usuario ya pasan el
+        # rol, y con cuatro puestos un olvido no es un descuido menor sino una
+        # cuenta con el rol que no era. Mejor un INSERT que revienta.
+        # La migracion d5f2b8a71c39 quita tambien el DEFAULT de Postgres, para
+        # que ninguna de las dos capas lo rellene por su cuenta.
     )
     activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

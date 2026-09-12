@@ -86,3 +86,46 @@ def requiere_roles(
 require_admin = requiere_roles(
     RolUsuario.ADMIN, mensaje="Esta acción requiere rol de administrador"
 )
+
+# --- Guardias por puesto ---
+#
+# Los nombres describen el TRABAJO, no una jerarquía: la separación entre quien
+# manda al taller y quien cuenta lo que vuelve es el control central del
+# producto, no un nivel de privilegio. ADMIN entra en todas porque es el
+# respaldo operativo cuando falta alguien, no porque esté "por encima".
+
+#: Registrar el corte, darlo de alta y mandarlo a los talleres.
+requiere_corte = requiere_roles(
+    RolUsuario.ADMIN,
+    RolUsuario.CORTE,
+    mensaje="Esta acción es de quien lleva el corte",
+)
+
+#: Contar y clasificar lo que devuelven los talleres. CORTE queda fuera a
+#: propósito: quien manda al taller no puede ser quien cuenta lo que vuelve, o
+#: el doble conteo se cierra sobre una sola persona y deja de ser un control.
+requiere_bodega = requiere_roles(
+    RolUsuario.ADMIN,
+    RolUsuario.BODEGA,
+    mensaje="Esta acción es de quien recibe en bodega",
+)
+
+#: Lectura compartida del día a día: catálogos y talleres, que las tres
+#: personas necesitan para saber de qué producto y de qué taller están hablando.
+requiere_operacion = requiere_roles(
+    RolUsuario.ADMIN,
+    RolUsuario.CORTE,
+    RolUsuario.BODEGA,
+    mensaje="Esta acción requiere un puesto de operación",
+)
+
+#: Respuestas que llevan cantidades: cuánto se cortó, cuánto se mandó, cuánto
+#: queda pendiente. BODEGA queda fuera de TODAS, y no por jerarquía: cuenta a
+#: ciegas, y ver la cifra esperada antes de contar anula el control entero.
+#: Es requisito explícito del dueño, no una interpretación nuestra.
+puede_ver_cantidades = requiere_roles(
+    RolUsuario.ADMIN,
+    RolUsuario.CORTE,
+    RolUsuario.VENTAS,
+    mensaje="Esta acción no está disponible para el puesto de bodega",
+)

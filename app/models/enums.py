@@ -3,8 +3,22 @@ import enum
 
 
 class RolUsuario(str, enum.Enum):
+    """Quién es quién en la planta.
+
+    No son niveles de privilegio sino PUESTOS: cada uno hace una parte del
+    flujo y no le toca la del otro. La separación entre CORTE y BODEGA es
+    además el control central del producto -- quien manda al taller no es
+    quien cuenta lo que vuelve -- así que fundirlos rompería la razón de ser
+    de la aplicación, no solo los permisos.
+    """
+
     ADMIN = "admin"
-    OPERADOR = "operador"
+    #: Registra el corte, cuenta lo que sale y lo asigna a los talleres.
+    CORTE = "corte"
+    #: Recibe lo que devuelven los talleres y lo cuenta A CIEGAS.
+    BODEGA = "bodega"
+    #: Ve qué hay listo para vender y registra las salidas.
+    VENTAS = "ventas"
 
 
 class EstadoLote(str, enum.Enum):

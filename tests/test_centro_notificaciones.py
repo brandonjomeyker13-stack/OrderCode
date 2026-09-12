@@ -206,9 +206,9 @@ def test_lo_leido_es_por_usuario(
     otro = Usuario(
         empresa_id=empresa.id,
         nombre="Operario",
-        email="operario@prueba.com",
+        email="corte@prueba.com",
         password_hash=hash_password(PASSWORD_DE_PRUEBA),
-        rol=RolUsuario.OPERADOR,
+        rol=RolUsuario.CORTE,
     )
     db.add(otro)
     db.commit()

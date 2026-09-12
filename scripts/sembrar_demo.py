@@ -236,7 +236,7 @@ def _sembrar(db, clave: str) -> None:
         nombre="Carlos Peña",
         email=EMAIL_OPERARIO,
         password_hash=hash_password(clave),
-        rol=RolUsuario.OPERADOR,
+        rol=RolUsuario.CORTE,
         email_verificado=True,
     )
     db.add_all([admin, operario])

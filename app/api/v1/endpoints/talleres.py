@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
-from app.core.deps import require_admin
+from app.core.deps import requiere_corte, requiere_operacion, require_admin
 from app.api.v1.deps import get_empresa_id, get_pagination
 from app.db.session import get_db
 from app.models.usuario import Usuario
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/talleres", tags=["talleres"])
 def crear_taller(
     data: TallerCreate,
     empresa_id: int = Depends(get_empresa_id),
-    _admin: Usuario = Depends(require_admin),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     return TallerService(db).crear(empresa_id, data)
@@ -30,6 +30,7 @@ def listar_talleres(
     response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_operacion),
     db: Session = Depends(get_db),
 ):
     service = TallerService(db)
@@ -41,6 +42,7 @@ def listar_talleres(
 def obtener_taller(
     taller_id: int,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_operacion),
     db: Session = Depends(get_db),
 ):
     return TallerService(db).obtener(taller_id, empresa_id)
@@ -50,6 +52,7 @@ def obtener_taller(
 def obtener_resumen_taller(
     taller_id: int,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     """Cifras de un solo taller, agregadas en la base de datos -- evita traer

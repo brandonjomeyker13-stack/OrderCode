@@ -21,13 +21,13 @@ from app.models.usuario import Usuario
 
 
 @pytest.fixture
-def operador(db: Session, empresa: Empresa) -> Usuario:
+def corte(db: Session, empresa: Empresa) -> Usuario:
     usuario = Usuario(
         empresa_id=empresa.id,
-        nombre="Operario de Prueba",
-        email="operario@prueba.com",
+        nombre="Encargada de Corte",
+        email="corte@prueba.com",
         password_hash=hash_password("clave-de-prueba-123"),
-        rol=RolUsuario.OPERADOR,
+        rol=RolUsuario.CORTE,
     )
     db.add(usuario)
     db.commit()
@@ -47,11 +47,11 @@ def test_el_contexto_lleva_usuario_empresa_y_rol(admin: Usuario, empresa: Empres
     assert contexto.es_admin is True
 
 
-def test_el_contexto_de_un_no_admin_no_dice_admin(operador: Usuario):
-    contexto = get_contexto(operador)
+def test_el_contexto_de_un_no_admin_no_dice_admin(corte: Usuario):
+    contexto = get_contexto(corte)
 
     assert contexto.es_admin is False
-    assert contexto.tiene_rol(RolUsuario.OPERADOR) is True
+    assert contexto.tiene_rol(RolUsuario.CORTE) is True
     assert contexto.tiene_rol(RolUsuario.ADMIN) is False
 
 
@@ -73,26 +73,26 @@ def test_el_contexto_es_inmutable(admin: Usuario):
 # --- Guardias por rol ---
 
 
-def test_la_guardia_deja_pasar_un_rol_permitido(operador: Usuario):
-    guardia = requiere_roles(RolUsuario.OPERADOR)
+def test_la_guardia_deja_pasar_un_rol_permitido(corte: Usuario):
+    guardia = requiere_roles(RolUsuario.CORTE)
 
-    assert guardia(operador) is operador
+    assert guardia(corte) is corte
 
 
 def test_la_guardia_deja_pasar_cualquiera_de_varios_roles(
-    admin: Usuario, operador: Usuario
+    admin: Usuario, corte: Usuario
 ):
-    guardia = requiere_roles(RolUsuario.ADMIN, RolUsuario.OPERADOR)
+    guardia = requiere_roles(RolUsuario.ADMIN, RolUsuario.CORTE)
 
     assert guardia(admin) is admin
-    assert guardia(operador) is operador
+    assert guardia(corte) is corte
 
 
-def test_la_guardia_rechaza_un_rol_que_no_esta(operador: Usuario):
+def test_la_guardia_rechaza_un_rol_que_no_esta(corte: Usuario):
     guardia = requiere_roles(RolUsuario.ADMIN)
 
     with pytest.raises(ForbiddenError):
-        guardia(operador)
+        guardia(corte)
 
 
 def test_una_guardia_sin_roles_es_un_error_de_programacion():
@@ -103,13 +103,13 @@ def test_una_guardia_sin_roles_es_un_error_de_programacion():
         requiere_roles()
 
 
-def test_require_admin_conserva_su_mensaje(operador: Usuario):
+def test_require_admin_conserva_su_mensaje(corte: Usuario):
     """El texto lo ve el usuario y ya está en producción; el nombre lo
     declaran ~15 endpoints y tests/test_permisos.py lo comprueba por
     identidad. Reexpresarlo con la fábrica no debe cambiar ninguna de las dos
     cosas."""
     with pytest.raises(ForbiddenError) as excinfo:
-        require_admin(operador)
+        require_admin(corte)
 
     assert excinfo.value.message == "Esta acción requiere rol de administrador"
 

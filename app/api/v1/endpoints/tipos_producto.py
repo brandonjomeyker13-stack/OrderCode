@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
-from app.core.deps import require_admin
+from app.core.deps import require_admin, requiere_corte
 from app.api.v1.deps import get_empresa_id, get_pagination
 from app.db.session import get_db
 from app.models.usuario import Usuario
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/tipos-producto", tags=["tipos-producto"])
 def crear_tipo_producto(
     data: TipoProductoCreate,
     empresa_id: int = Depends(get_empresa_id),
-    _admin: Usuario = Depends(require_admin),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     return TipoProductoService(db).crear(empresa_id, data)
@@ -82,6 +82,7 @@ def escanear_qr(
 def lotes_activos_por_qr(
     token: str,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     """Vista principal al escanear el QR: lotes activos + disponibilidad."""

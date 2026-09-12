@@ -34,6 +34,7 @@ def listar_usuarios(
     response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     service = UsuarioService(db)
@@ -45,6 +46,7 @@ def listar_usuarios(
 def obtener_usuario(
     usuario_id: int,
     empresa_id: int = Depends(get_empresa_id),
+    _admin: Usuario = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     return UsuarioService(db).obtener(usuario_id, empresa_id)

@@ -2,8 +2,10 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.deps import requiere_corte
 from app.api.v1.deps import get_empresa_id
 from app.db.session import get_db
+from app.models.usuario import Usuario
 from app.schemas.alerta import ResumenAlertas
 from app.services.alerta_service import AlertaService
 
@@ -13,6 +15,7 @@ router = APIRouter(prefix="/alertas", tags=["alertas"])
 @router.get("", response_model=ResumenAlertas)
 def obtener_alertas(
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     """Lotes que llevan demasiado tiempo en talleres sin cerrarse.

@@ -4,7 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
 
-from app.core.deps import require_admin
+from app.core.deps import puede_ver_cantidades, requiere_corte, require_admin
 from app.api.v1.deps import get_empresa_id
 from app.db.session import get_db
 from app.models.usuario import Usuario
@@ -18,6 +18,7 @@ router = APIRouter(prefix="/lotes", tags=["lotes"])
 def crear_lote(
     data: LoteCreate,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
     idempotency_key: str | None = Header(
         default=None,
@@ -34,6 +35,7 @@ def crear_lote(
 def obtener_lote(
     lote_id: int,
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(puede_ver_cantidades),
     db: Session = Depends(get_db),
 ):
     return LoteService(db).obtener_con_disponibilidad(lote_id, empresa_id)
@@ -77,6 +79,7 @@ def listar_lotes(
     response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(puede_ver_cantidades),
     db: Session = Depends(get_db),
 ):
     service = LoteService(db)
