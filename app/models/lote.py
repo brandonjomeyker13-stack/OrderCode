@@ -39,3 +39,6 @@ class Lote(Base, TimestampMixin):
     asignaciones: Mapped[list["AsignacionTaller"]] = relationship(
         back_populates="lote", cascade="all, delete-orphan"
     )
+    ventas: Mapped[list["Venta"]] = relationship(
+        back_populates="lote", cascade="all, delete-orphan"
+    )

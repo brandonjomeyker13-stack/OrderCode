@@ -15,6 +15,7 @@ from app.models.asignacion_taller import AsignacionTaller
 from app.models.incidencia import Incidencia
 from app.models.devolucion import Devolucion
 from app.models.conteo_recepcion import ConteoRecepcion
+from app.models.venta import Venta
 from app.models.refresh_token import RefreshToken
 from app.models.idempotency_key import IdempotencyKey
 from app.models.password_reset_token import PasswordResetToken
@@ -36,6 +37,7 @@ __all__ = [
     "Incidencia",
     "Devolucion",
     "ConteoRecepcion",
+    "Venta",
     "RefreshToken",
     "IdempotencyKey",
     "PasswordResetToken",

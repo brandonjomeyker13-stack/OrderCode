@@ -28,6 +28,7 @@ from app.core.deps import (
     requiere_bodega,
     requiere_corte,
     requiere_operacion,
+    requiere_ventas,
 )
 from app.main import app
 
@@ -37,6 +38,7 @@ GUARDIAS = {
     requiere_corte: "admin+corte",
     requiere_bodega: "admin+bodega",
     requiere_operacion: "admin+corte+bodega",
+    requiere_ventas: "admin+ventas",
     puede_ver_cantidades: "admin+corte+ventas",
 }
 
@@ -95,6 +97,15 @@ MATRIZ = {
     ("/api/v1/notificaciones", "GET"): puede_ver_cantidades,
     ("/api/v1/notificaciones/leer-todas", "POST"): puede_ver_cantidades,
     ("/api/v1/notificaciones/{aviso_id}/leer", "POST"): puede_ver_cantidades,
+    # Saber qué hay listo es información de producción: la leen los tres que
+    # ven cantidades. Sacarlo del inventario es solo de quien despacha.
+    ("/api/v1/inventario", "GET"): puede_ver_cantidades,
+    ("/api/v1/inventario/ventas", "GET"): puede_ver_cantidades,
+
+    # --- El final del recorrido es de VENTAS ---
+    ("/api/v1/inventario/ventas", "POST"): requiere_ventas,
+    ("/api/v1/inventario/ventas/{venta_id}", "PATCH"): requiere_ventas,
+    ("/api/v1/inventario/ventas/{venta_id}", "DELETE"): requiere_ventas,
 
     # --- Corregir lo ya capturado es del admin ---
     #

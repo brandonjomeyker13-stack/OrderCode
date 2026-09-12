@@ -9,6 +9,7 @@ from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationErro
 from app.core.security import verify_password
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.conteo_recepcion import ConteoRecepcion
+from app.models.venta import Venta
 from app.models.devolucion import Devolucion
 from app.models.empresa import Empresa
 from app.models.empresa_eliminada import EmpresaEliminada
@@ -124,6 +125,8 @@ class EmpresaService:
         ConteoRecepcion,
         Devolucion,
         AsignacionTaller,
+        # Antes que Lote: cuelga de el.
+        Venta,
         Lote,
         TipoProducto,
         QRCode,

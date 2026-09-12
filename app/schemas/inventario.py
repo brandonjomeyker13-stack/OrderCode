@@ -1,0 +1,78 @@
+# app/schemas/inventario.py
+"""
+Lo que ya está listo para salir, y lo que salió.
+
+El disponible NO se guarda en ninguna columna: se calcula como lo devuelto y
+confirmado menos lo vendido. Es deliberado. Un saldo guardado se desincroniza
+en cuanto alguien corrige una devolución vieja o borra una merma, y este
+sistema tiene correcciones por todas partes -- el admin puede editar
+asignaciones, mermas y devoluciones. Un número calculado no se puede quedar
+viejo.
+"""
+from datetime import date
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.common import MAX_UNIDADES, TimestampSchema
+
+
+class LineaInventarioOut(BaseModel):
+    """Una tanda lista para vender, con lo que queda de ella."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    lote_id: int
+    producto: str
+    referencia: str
+    fecha_registro: date
+
+    #: Unidades que volvieron BIEN del taller y que corte ya confirmó. Lo
+    #: dañado no está aquí: no está listo para vender.
+    cantidad_lista: int
+    cantidad_vendida: int
+    cantidad_disponible: int
+
+
+class ResumenInventarioOut(BaseModel):
+    """El inventario completo, con el total arriba para no sumarlo a mano."""
+
+    total_disponible: int
+    total_vendido: int
+    lineas: list[LineaInventarioOut]
+
+
+class VentaCreate(BaseModel):
+    lote_id: int
+    cantidad: int = Field(gt=0, le=MAX_UNIDADES)
+    fecha: date
+    #: A quién se le mandó, o lo que le sirva a la empresa para reconocer la
+    #: salida. Texto libre: no hay módulo de clientes ni va a haberlo.
+    nota: str | None = Field(default=None, max_length=1000)
+
+
+class VentaUpdate(BaseModel):
+    """Corrección de captura. `lote_id` no se puede cambiar: mover una salida
+    de un lote a otro no es corregir, es rehacer dos inventarios a la vez."""
+
+    cantidad: int | None = Field(default=None, gt=0, le=MAX_UNIDADES)
+    fecha: date | None = None
+    nota: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _algo_que_cambiar(self) -> "VentaUpdate":
+        if self.model_fields_set == set():
+            raise ValueError("No mandaste ningún cambio")
+        return self
+
+
+class VentaOut(TimestampSchema):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    lote_id: int
+    producto: str
+    referencia: str
+    cantidad: int
+    fecha: date
+    nota: str | None
+    registrada_por: str | None

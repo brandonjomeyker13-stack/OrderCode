@@ -125,6 +125,14 @@ requiere_operacion = requiere_roles(
     mensaje="Esta acción requiere un puesto de operación",
 )
 
+#: Sacar del inventario lo que ya esta listo. Es el final del recorrido y el
+#: unico sitio donde VENTAS escribe algo.
+requiere_ventas = requiere_roles(
+    RolUsuario.ADMIN,
+    RolUsuario.VENTAS,
+    mensaje="Esta acción es de quien despacha lo que ya está listo",
+)
+
 #: Respuestas que llevan cantidades: cuánto se cortó, cuánto se mandó, cuánto
 #: queda pendiente. BODEGA queda fuera de TODAS, y no por jerarquía: cuenta a
 #: ciegas, y ver la cifra esperada antes de contar anula el control entero.
