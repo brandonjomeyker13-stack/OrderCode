@@ -17,7 +17,10 @@ El caso que motivó este archivo: el ranking de talleres y su Excel quedaron
 abiertos a cualquier usuario cuando se les agregó una cifra sensible, así que
 un operario podía ver el desempeño comparado de todos los talleres.
 """
+from typing import get_args
+
 from fastapi.routing import APIRoute
+from pydantic import BaseModel
 
 from app.core.deps import (
     puede_ver_cantidades,
@@ -52,17 +55,38 @@ MATRIZ = {
     # La vista de escaneo publica cantidad_disponible del lote.
     ("/api/v1/tipos-producto/qr/{token}/lotes-activos", "GET"): requiere_corte,
 
-    # --- Lo que vuelve lo cuenta BODEGA, y CORTE queda fuera a propósito ---
-    ("/api/v1/asignaciones/{asignacion_id}/devolucion", "POST"): requiere_bodega,
-    ("/api/v1/incidencias", "POST"): requiere_bodega,
+    # El corte corrige lo que el taller devolvió mal, y levanta la merma: son
+    # su lado de la conversación con bodega.
+    ("/api/v1/incidencias", "POST"): requiere_corte,
+    ("/api/v1/incidencias", "GET"): requiere_corte,
+    ("/api/v1/incidencias/{incidencia_id}", "GET"): requiere_corte,
+    # Las tres publican cantidad_asignada (IncidenciaOut anida la asignación
+    # entera), y el listado además acepta filtrar por lote: sumando se
+    # reconstruye el corte completo.
+    ("/api/v1/asignaciones", "GET"): requiere_corte,
+    ("/api/v1/asignaciones/{asignacion_id}", "GET"): requiere_corte,
+    # Corte compara lo que mandó contra lo que bodega contó, y confirma.
+    ("/api/v1/recepcion/por-confirmar", "GET"): requiere_corte,
+    ("/api/v1/recepcion/conteos/{conteo_id}/comparacion", "GET"): requiere_corte,
+    ("/api/v1/recepcion/conteos/{conteo_id}/confirmar", "POST"): requiere_corte,
+
+    # --- Lo que vuelve lo cuenta BODEGA, y solo por estas rutas ---
+    #
+    # Son las únicas de bodega, y ninguna de sus respuestas declara una
+    # cantidad enviada. Eso lo comprueba
+    # test_ninguna_respuesta_de_bodega_lleva_cantidades_enviadas, que es la
+    # prueba que convierte el conteo a ciegas en una propiedad del código y no
+    # en una costumbre.
+    ("/api/v1/recepcion/pendientes", "GET"): requiere_bodega,
+    ("/api/v1/recepcion/conteos", "POST"): requiere_bodega,
+    ("/api/v1/recepcion/conteos", "GET"): requiere_bodega,
+    ("/api/v1/recepcion/conteos/{conteo_id}", "GET"): requiere_bodega,
+    ("/api/v1/recepcion/conteos/{conteo_id}", "PATCH"): requiere_bodega,
+    ("/api/v1/recepcion/conteos/{conteo_id}", "DELETE"): requiere_bodega,
 
     # --- Lectura compartida: saber de qué taller y de qué producto se habla ---
     ("/api/v1/talleres", "GET"): requiere_operacion,
     ("/api/v1/talleres/{taller_id}", "GET"): requiere_operacion,
-    ("/api/v1/asignaciones", "GET"): requiere_operacion,
-    ("/api/v1/asignaciones/{asignacion_id}", "GET"): requiere_operacion,
-    ("/api/v1/incidencias", "GET"): requiere_operacion,
-    ("/api/v1/incidencias/{incidencia_id}", "GET"): requiere_operacion,
 
     # --- Respuestas con cantidades: BODEGA fuera, cuenta a ciegas ---
     ("/api/v1/lotes", "GET"): puede_ver_cantidades,
@@ -82,6 +106,11 @@ MATRIZ = {
     ("/api/v1/lotes/{lote_id}", "PATCH"): require_admin,
     ("/api/v1/lotes/{lote_id}", "DELETE"): require_admin,
     ("/api/v1/lotes/{lote_id}/cerrar-cliente", "POST"): require_admin,
+    # Camino viejo de una sola firma: bodega escribía y en el mismo acto se
+    # descontaba el saldo. Rechaza el conteo que no cuadra diciendo la cifra
+    # exacta, así que en manos de bodega era un oráculo. Queda como salida de
+    # emergencia del dueño; el camino normal es /recepcion.
+    ("/api/v1/asignaciones/{asignacion_id}/devolucion", "POST"): require_admin,
     ("/api/v1/asignaciones/{asignacion_id}", "PATCH"): require_admin,
     ("/api/v1/asignaciones/{asignacion_id}", "DELETE"): require_admin,
     ("/api/v1/incidencias/{incidencia_id}", "PATCH"): require_admin,
@@ -193,19 +222,103 @@ def test_la_matriz_cubre_todas_las_rutas_de_negocio():
     )
 
 
-def test_bodega_no_alcanza_ninguna_ruta_con_cantidades():
-    """El requisito del dueño, escrito como prueba: bodega cuenta a ciegas.
+# Campos que dicen, directa o indirectamente, CUÁNTO se le mandó al taller.
+# `cantidad_pendiente` y `cantidad_merma` cuentan igual que `cantidad_asignada`:
+# quien tiene dos de las tres despeja la tercera de cabeza.
+CANTIDADES_ENVIADAS = frozenset(
+    {
+        "cantidad_asignada",
+        "cantidad_pendiente",
+        "cantidad_merma",
+        "cantidad_devuelta",
+        "cantidad_total",
+        "cantidad_disponible",
+        "diferencia",
+    }
+)
 
-    Ojo con lo que esta prueba SÍ y NO garantiza. Garantiza que bodega no puede
-    LLAMAR a las rutas cuya respuesta lleva cantidades. NO garantiza el conteo a
-    ciegas completo: las rutas que bodega sí necesita (GET /asignaciones, para
-    saber a qué taller le anota) todavía devuelven cantidad_asignada, y
-    POST /devolucion rechaza un conteo que no cuadre diciendo la cifra exacta en
-    el 422. Eso se cierra rediseñando la recepción, no con permisos.
+
+def _campos_publicados(anotacion, prefijo="", vistos=None) -> set[str]:
+    """Todos los campos que una respuesta publica, incluidos los anidados.
+
+    Recursivo a propósito. La fuga más cara que encontramos no era un campo
+    suelto sino un schema ENTERO metido dentro de otro: IncidenciaOut anidaba
+    AsignacionTallerOut completa, así que publicaba las tres cantidades sin
+    que su propia lista de campos las nombrara.
     """
-    for (path, metodo), guardia in MATRIZ.items():
-        if guardia is not puede_ver_cantidades:
+    vistos = vistos if vistos is not None else set()
+    campos: set[str] = set()
+
+    for tipo in _desenvolver(anotacion):
+        if not (isinstance(tipo, type) and issubclass(tipo, BaseModel)):
             continue
-        assert puede_ver_cantidades in _guardias_de(_buscar(path, metodo)), (
-            f"{metodo} {path} lleva cantidades y quedó alcanzable por bodega"
-        )
+        if tipo in vistos:  # un schema que se anida a sí mismo
+            continue
+        vistos.add(tipo)
+        for nombre, campo in tipo.model_fields.items():
+            campos.add(f"{prefijo}{nombre}")
+            campos |= _campos_publicados(campo.annotation, f"{prefijo}{nombre}.", vistos)
+
+    return campos
+
+
+def _desenvolver(anotacion) -> list:
+    """Saca el modelo de dentro de list[X], X | None, dict[str, X]..."""
+    if anotacion is None:
+        return []
+    args = get_args(anotacion)
+    if not args:
+        return [anotacion]
+    tipos = []
+    for arg in args:
+        tipos.extend(_desenvolver(arg))
+    return tipos
+
+
+def test_ninguna_respuesta_de_bodega_lleva_cantidades_enviadas():
+    """El requisito del dueño, convertido en una propiedad del código.
+
+    No comprueba que alguien se acuerde de ocultar un campo: comprueba que el
+    campo NO EXISTE en ninguna respuesta que bodega pueda pedir. Un schema que
+    no declara `cantidad_asignada` no puede filtrarla por descuido, por un `if`
+    mal puesto ni por una precarga nueva.
+
+    Recorre las rutas de bodega Y las abiertas a todos, porque bodega también
+    alcanza esas. Es estática: corre en milisegundos y cubre schemas que
+    todavía no existen.
+    """
+    culpables = []
+    for (path, metodo), guardia in MATRIZ.items():
+        if guardia not in (requiere_bodega, None):
+            continue
+        ruta = _buscar(path, metodo)
+        filtrados = _campos_publicados(ruta.response_model) & CANTIDADES_ENVIADAS
+        # También los anidados: "asignacion.cantidad_asignada".
+        anidados = {
+            c for c in _campos_publicados(ruta.response_model)
+            if c.rsplit(".", 1)[-1] in CANTIDADES_ENVIADAS
+        }
+        if filtrados or anidados:
+            culpables.append(f"{metodo} {path}: {sorted(filtrados | anidados)}")
+
+    assert not culpables, (
+        "estas respuestas alcanzables por bodega publican lo que se envió al "
+        "taller, y bodega tiene que contar sin saberlo: " + "; ".join(culpables)
+    )
+
+
+def test_bodega_solo_tiene_las_rutas_de_recepcion():
+    """Si bodega gana una ruta fuera de /recepcion, la prueba de arriba puede
+    seguir pasando y el conteo a ciegas romperse igual: bastaría con que esa
+    ruta nueva publicara la cifra bajo otro nombre. Este cerco es más simple de
+    revisar que la lista de campos prohibidos."""
+    fuera = [
+        f"{metodo} {path}"
+        for (path, metodo), guardia in MATRIZ.items()
+        if guardia is requiere_bodega and not path.startswith("/api/v1/recepcion/")
+    ]
+
+    assert not fuera, (
+        "bodega tiene rutas fuera de /recepcion: " + ", ".join(sorted(fuera)) +
+        ". Si de verdad las necesita, revisa qué publican antes de agregarlas."
+    )

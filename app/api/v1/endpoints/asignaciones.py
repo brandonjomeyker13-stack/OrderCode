@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
-from app.core.deps import requiere_bodega, requiere_corte, requiere_operacion, require_admin
+from app.core.deps import require_admin, requiere_corte
 from app.db.session import get_db
 from app.models.enums import EstadoAsignacion
 from app.models.usuario import Usuario
@@ -43,7 +43,10 @@ def crear_asignacion(
 def obtener_asignacion(
     asignacion_id: int,
     empresa_id: int = Depends(get_empresa_id),
-    _puesto: Usuario = Depends(requiere_operacion),
+    # Antes era de operacion, para que bodega supiera a que taller anotarle.
+    # Ya no le hace falta: GET /recepcion/pendientes le da el taller sin las
+    # cantidades. Esta respuesta lleva cantidad_asignada y cantidad_pendiente.
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     return AsignacionTallerService(db).obtener_con_merma(asignacion_id, empresa_id)
@@ -98,7 +101,12 @@ def registrar_devolucion(
     asignacion_id: int,
     data: AsignacionTallerRegistrarDevolucion,
     empresa_id: int = Depends(get_empresa_id),
-    _puesto: Usuario = Depends(requiere_bodega),
+    # Queda como salida de emergencia del admin, NO como la via de bodega.
+    # Rechaza el conteo que no cuadra diciendo la cifra exacta que faltaba:
+    # en manos de bodega ese 422 era un oraculo que anulaba el conteo a
+    # ciegas. El camino de bodega es POST /recepcion/conteos, que no compara
+    # nada, y el descuadre lo resuelve corte al confirmar.
+    _admin: Usuario = Depends(require_admin),
     db: Session = Depends(get_db),
     idempotency_key: str | None = Header(
         default=None,
@@ -125,7 +133,10 @@ def listar_asignaciones(
     ),
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
-    _puesto: Usuario = Depends(requiere_operacion),
+    # Ver el comentario de obtener_asignacion: el listado publica lo mismo,
+    # y ademas acepta filtrar por lote, con lo que se podia reconstruir el
+    # corte entero sumando.
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     """Todos los filtros son opcionales y se aplican en la base de datos.

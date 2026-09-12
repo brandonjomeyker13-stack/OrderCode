@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.core.security import verify_password
 from app.models.asignacion_taller import AsignacionTaller
+from app.models.conteo_recepcion import ConteoRecepcion
 from app.models.devolucion import Devolucion
 from app.models.empresa import Empresa
 from app.models.empresa_eliminada import EmpresaEliminada
@@ -119,6 +120,8 @@ class EmpresaService:
     ORDEN_DE_BORRADO = (
         Notificacion,
         Incidencia,
+        # Antes que Devolucion: apunta a ella (devolucion_id) y a usuarios.
+        ConteoRecepcion,
         Devolucion,
         AsignacionTaller,
         Lote,

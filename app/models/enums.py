@@ -36,6 +36,21 @@ class EstadoAsignacion(str, enum.Enum):
     ENTREGADO_COMPLETO = "entregado_completo"
 
 
+class EstadoConteo(str, enum.Enum):
+    """En qué punto está lo que bodega contó.
+
+    Son dos y no tres a propósito: no hay "rechazado". Si la cifra no cuadra,
+    corte no rechaza nada -- llama a bodega, hablan, y bodega corrige su
+    propio reporte. Un estado de rechazo convertiría una conversación de dos
+    minutos en un trámite, y dejaría filas muertas que nadie vuelve a mirar.
+    """
+
+    #: Bodega ya contó y lo dejó anotado. Todavía no descuenta nada.
+    REPORTADO = "reportado"
+    #: Corte lo dio por bueno. En este momento nació la Devolucion.
+    CONFIRMADO = "confirmado"
+
+
 class TipoIncidencia(str, enum.Enum):
     PRODUCTO_DANADO = "producto_danado"
     MATERIA_PRIMA_DANADA = "materia_prima_danada"

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
-from app.core.deps import requiere_bodega, requiere_operacion, require_admin
+from app.core.deps import require_admin, requiere_corte
 from app.db.session import get_db
 from app.models.usuario import Usuario
 from app.schemas.asignacion_taller import AsignacionTallerOut
@@ -18,7 +18,12 @@ router = APIRouter(prefix="/incidencias", tags=["incidencias"])
 def crear_incidencia(
     data: IncidenciaCreate,
     empresa_id: int = Depends(get_empresa_id),
-    _puesto: Usuario = Depends(requiere_bodega),
+    # Bodega ya no levanta la merma por aca: la anota como cantidad_danada
+    # en su propio conteo, y corte la revisa al confirmar. Este endpoint
+    # validaba contra lo pendiente ANTES de escribir, asi que bastaba con
+    # mandar una cantidad imposible para leer el saldo exacto en el error,
+    # sin dejar rastro en la base. Era el peor de los dos oraculos.
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
     idempotency_key: str | None = Header(
         default=None,
@@ -36,7 +41,7 @@ def listar_incidencias(
     response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
-    _puesto: Usuario = Depends(requiere_operacion),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     service = IncidenciaService(db)
@@ -48,7 +53,7 @@ def listar_incidencias(
 def obtener_incidencia(
     incidencia_id: int,
     empresa_id: int = Depends(get_empresa_id),
-    _puesto: Usuario = Depends(requiere_operacion),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     return IncidenciaService(db).obtener(incidencia_id, empresa_id)

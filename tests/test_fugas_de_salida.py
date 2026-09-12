@@ -18,10 +18,12 @@ import tokenize
 from pathlib import Path
 
 from app.models.asignacion_taller import AsignacionTaller
+from app.models.conteo_recepcion import ConteoRecepcion
 from app.models.empresa import Empresa
 from app.models.incidencia import Incidencia
 from app.models.lote import Lote
 from app.schemas.asignacion_taller import AsignacionTallerOut
+from app.schemas.recepcion import ConteoBodegaOut, ConteoPorConfirmarOut
 from app.schemas.empresa import EmpresaConEstadisticas
 from app.schemas.incidencia import IncidenciaOut
 from app.schemas.lote import LoteConDisponibilidad
@@ -115,6 +117,41 @@ SUPERFICIE_PUBLICADA = {
             "updated_at",
         },
     ),
+    # Los dos lados de la recepción. La gracia de tenerlos aquí juntos es que
+    # la diferencia entre las dos listas se lee de un vistazo: son el mismo
+    # hecho contado a dos públicos, y ninguno de los dos publica de más.
+    "ConteoBodegaOut": (
+        ConteoBodegaOut,
+        ConteoRecepcion,
+        {
+            "id",
+            "asignacion_id",
+            "cantidad_buena",
+            "cantidad_danada",
+            "fecha",
+            "nota",
+            "estado",
+            "confirmado_at",
+            "created_at",
+            "updated_at",
+        },
+    ),
+    "ConteoPorConfirmarOut": (
+        ConteoPorConfirmarOut,
+        ConteoRecepcion,
+        {
+            "id",
+            "asignacion_id",
+            "cantidad_buena",
+            "cantidad_danada",
+            "fecha",
+            "nota",
+            "estado",
+            "confirmado_at",
+            "created_at",
+            "updated_at",
+        },
+    ),
     "EmpresaConEstadisticas": (
         EmpresaConEstadisticas,
         Empresa,
@@ -152,3 +189,9 @@ def test_las_columnas_internas_siguen_sin_publicarse():
     assert "ultima_alerta_at" not in EmpresaConEstadisticas.model_fields
     assert "taller_id" not in AsignacionTallerOut.model_fields
     assert "tipo_producto_id" not in LoteConDisponibilidad.model_fields
+    # Quién contó y quién confirmó son ids internos: los dos schemas publican
+    # el NOMBRE (y solo el de corte), nunca el id.
+    assert "contado_por_id" not in ConteoBodegaOut.model_fields
+    assert "confirmado_por_id" not in ConteoPorConfirmarOut.model_fields
+    # El puente con la devolución es de auditoría interna, no de la API.
+    assert "devolucion_id" not in ConteoPorConfirmarOut.model_fields

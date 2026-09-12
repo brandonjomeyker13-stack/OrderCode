@@ -56,3 +56,8 @@ class AsignacionTaller(Base, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="Devolucion.fecha",
     )
+    conteos_recepcion: Mapped[list["ConteoRecepcion"]] = relationship(
+        back_populates="asignacion",
+        cascade="all, delete-orphan",
+        order_by="ConteoRecepcion.fecha",
+    )

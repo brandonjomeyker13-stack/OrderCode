@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     lotes,
     notificaciones,
     ranking,
+    recepcion,
     resumen,
     talleres,
     tipos_producto,
@@ -27,6 +28,8 @@ api_router.include_router(tipos_producto.router)
 api_router.include_router(lotes.router)
 api_router.include_router(asignaciones.router)
 api_router.include_router(incidencias.router)
+# La recepcion tiene su propia carpeta: dos archivos, uno por puesto.
+api_router.include_router(recepcion.router)
 api_router.include_router(resumen.router)
 api_router.include_router(ranking.router)
 api_router.include_router(importacion.router)

@@ -121,6 +121,36 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def listar_por_estados(
+        self,
+        empresa_id: int,
+        estados: list[EstadoAsignacion],
+        offset: int = 0,
+        limit: int = 50,
+    ) -> list[AsignacionTaller]:
+        """Las asignaciones que están en alguno de esos estados.
+
+        La usa la lista de bodega ("qué puede llegar hoy"). Filtra por ESTADO
+        y no por saldo a propósito: una consulta que preguntara "¿a cuánto le
+        falta?" traería la cantidad enviada hasta esa capa, y de ahí a una
+        respuesta hay un descuido de distancia. Bodega cuenta a ciegas.
+        """
+        stmt = (
+            select(AsignacionTaller)
+            .options(
+                selectinload(AsignacionTaller.taller),
+                selectinload(AsignacionTaller.lote).selectinload(Lote.tipo_producto),
+            )
+            .where(
+                AsignacionTaller.empresa_id == empresa_id,
+                AsignacionTaller.estado.in_(estados),
+            )
+            .order_by(AsignacionTaller.fecha_asignacion.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def listar_por_lote(self, lote_id: int, empresa_id: int) -> list[AsignacionTaller]:
         stmt = (
             select(AsignacionTaller)

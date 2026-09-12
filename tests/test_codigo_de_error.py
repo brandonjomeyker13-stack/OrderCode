@@ -115,7 +115,7 @@ def test_la_empresa_pausada_gana_sobre_el_puesto(
     empresa.activo = False
     db.commit()
 
-    respuesta = cliente.get("/api/v1/asignaciones", headers=_token(bodega))
+    respuesta = cliente.get("/api/v1/recepcion/pendientes", headers=_token(bodega))
 
     assert respuesta.status_code == 403
     assert respuesta.json()["codigo"] == EMPRESA_INACTIVA
@@ -126,7 +126,7 @@ def test_los_errores_de_siempre_no_ganaron_un_campo(cliente: TestClient, bodega:
     no lo declaran. El front tiene un contrato de campos y una respuesta que
     crece sola es justo lo que tests/test_fugas_de_salida.py existe para
     impedir."""
-    respuesta = cliente.get("/api/v1/asignaciones/99999", headers=_token(bodega))
+    respuesta = cliente.get("/api/v1/recepcion/conteos/99999", headers=_token(bodega))
 
     assert respuesta.status_code == 404
-    assert respuesta.json() == {"detail": "Asignación no encontrada"}
+    assert respuesta.json() == {"detail": "No encontramos ese conteo"}
