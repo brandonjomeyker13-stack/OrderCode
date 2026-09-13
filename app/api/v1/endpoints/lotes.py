@@ -8,27 +8,16 @@ from app.core.deps import puede_ver_cantidades, requiere_corte, require_admin
 from app.api.v1.deps import get_empresa_id
 from app.db.session import get_db
 from app.models.usuario import Usuario
-from app.schemas.lote import LoteConDisponibilidad, LoteCreate, LoteOut, LoteUpdate
+from app.schemas.lote import LoteConDisponibilidad, LoteOut, LoteUpdate
 from app.services.lote_service import LoteService
 
 router = APIRouter(prefix="/lotes", tags=["lotes"])
 
-
-@router.post("", response_model=LoteOut, status_code=201)
-def crear_lote(
-    data: LoteCreate,
-    empresa_id: int = Depends(get_empresa_id),
-    _puesto: Usuario = Depends(requiere_corte),
-    db: Session = Depends(get_db),
-    idempotency_key: str | None = Header(
-        default=None,
-        alias="Idempotency-Key",
-        # La columna es String(255): sin este tope, una clave más larga
-        # pasa la validación y revienta como 500 al escribir en la base.
-        max_length=255,
-    ),
-):
-    return LoteService(db).crear(empresa_id, data, idempotency_key)
+# Aquí NO hay POST. Un lote es una línea de un corte y nace con él
+# (POST /cortes): crearlo suelto lo dejaba sin corte, sin color y sin
+# proporciones, y con dos caminos para lo mismo el incompleto gana siempre,
+# porque es el más corto. Lo que queda son las correcciones del admin y las
+# lecturas, que son de todos.
 
 
 @router.get("/{lote_id}", response_model=LoteConDisponibilidad)

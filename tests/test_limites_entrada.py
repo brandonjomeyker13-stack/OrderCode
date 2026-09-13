@@ -24,7 +24,8 @@ from app.schemas.asignacion_taller import (
 )
 from app.schemas.common import MAX_UNIDADES
 from app.schemas.incidencia import IncidenciaCreate
-from app.schemas.lote import LoteCreate, LoteUpdate
+from app.schemas.corte import LineaCorteCreate
+from app.schemas.lote import LoteUpdate
 
 # El límite del INTEGER de PostgreSQL. Cualquier cosa por encima reventaba.
 MAX_INTEGER_POSTGRES = 2_147_483_647
@@ -38,7 +39,7 @@ def test_el_tope_esta_por_debajo_del_limite_de_postgres():
 @pytest.mark.parametrize(
     "construir",
     [
-        lambda n: LoteCreate(tipo_producto_id=1, cantidad_total=n, fecha_registro=date(2026, 1, 1)),
+        lambda n: LineaCorteCreate(tipo_producto_id=1, cantidad=n),
         lambda n: LoteUpdate(cantidad_total=n),
         lambda n: AsignacionTallerCreate(
             lote_id=1, taller_id=1, cantidad_asignada=n, fecha_asignacion=date(2026, 1, 1)
@@ -52,7 +53,7 @@ def test_el_tope_esta_por_debajo_del_limite_de_postgres():
             descripcion="x", fecha=date(2026, 1, 1),
         ),
     ],
-    ids=["lote_crear", "lote_editar", "asignar", "asignar_editar", "devolver", "merma"],
+    ids=["linea_corte", "lote_editar", "asignar", "asignar_editar", "devolver", "merma"],
 )
 def test_rechaza_cantidades_que_reventarian_postgres(construir):
     for absurdo in (MAX_UNIDADES + 1, MAX_INTEGER_POSTGRES + 1, 5_000_000_000):
@@ -63,12 +64,12 @@ def test_rechaza_cantidades_que_reventarian_postgres(construir):
 @pytest.mark.parametrize(
     "construir",
     [
-        lambda n: LoteCreate(tipo_producto_id=1, cantidad_total=n, fecha_registro=date(2026, 1, 1)),
+        lambda n: LineaCorteCreate(tipo_producto_id=1, cantidad=n),
         lambda n: AsignacionTallerCreate(
             lote_id=1, taller_id=1, cantidad_asignada=n, fecha_asignacion=date(2026, 1, 1)
         ),
     ],
-    ids=["lote_crear", "asignar"],
+    ids=["linea_corte", "asignar"],
 )
 def test_una_cantidad_grande_pero_razonable_si_pasa(construir):
     """El tope no puede estorbarle a un cliente real. El más grande produce

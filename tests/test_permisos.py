@@ -46,7 +46,6 @@ GUARDIAS = {
 # sesión": son las pantallas que las cuatro personas necesitan.
 MATRIZ = {
     # --- El corte sale y se manda al taller: es el trabajo de CORTE ---
-    ("/api/v1/lotes", "POST"): requiere_corte,
     # El tendido entero: cabecera y líneas de una vez.
     ("/api/v1/cortes", "POST"): requiere_corte,
     # Leerlo lleva cantidades, así que lo ven los tres que pueden verlas.

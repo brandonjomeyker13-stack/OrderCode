@@ -8,12 +8,6 @@ from app.schemas.common import MAX_UNIDADES, TimestampSchema
 from app.schemas.tipo_producto import TipoProductoOut
 
 
-class LoteCreate(BaseModel):
-    tipo_producto_id: int
-    cantidad_total: int = Field(gt=0, le=MAX_UNIDADES)
-    fecha_registro: date
-
-
 class LoteUpdate(BaseModel):
     """Corrección de un error de captura -- no cambia el estado del lote,
     eso ya tiene sus propios flujos (asignar, devolver, cerrar_hacia_cliente)."""

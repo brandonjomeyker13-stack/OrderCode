@@ -21,10 +21,10 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerRegistrarDevolucion,
 )
 from app.schemas.incidencia import IncidenciaCreate
-from app.schemas.lote import LoteCreate
+from app.schemas.corte import CorteCreate, LineaCorteCreate
 from app.services.asignacion_taller_service import AsignacionTallerService
 from app.services.incidencia_service import IncidenciaService
-from app.services.lote_service import LoteService
+from app.services.corte_service import CorteService
 
 CLAVE = "clave-de-idempotencia-123"
 
@@ -145,20 +145,28 @@ def test_reintentar_la_misma_devolucion_no_la_duplica(
     assert len(db.execute(select(Devolucion)).scalars().all()) == 1
 
 
-def test_doble_clic_no_duplica_el_lote(db: Session, empresa: Empresa, lote: Lote):
-    """Regresión: crear lote era el único POST de creación sin protección, y
-    en producción quedaron cuatro lotes idénticos de un usuario que clicaba
-    creyendo que no funcionaba."""
-    servicio = LoteService(db)
-    datos = LoteCreate(
-        tipo_producto_id=lote.tipo_producto_id,
-        cantidad_total=250,
-        fecha_registro=date(2026, 2, 1),
+def test_doble_clic_no_duplica_el_corte(db: Session, empresa: Empresa, lote: Lote):
+    """Regresión: registrar era el único POST de creación sin protección, y en
+    producción quedaron cuatro lotes idénticos de un usuario que clicaba
+    creyendo que no funcionaba.
+
+    Antes el vehículo de esta prueba era crear un lote suelto. Ese camino se
+    cerró: un lote es una línea de un corte y nace con él. La regresión sigue
+    viva en el corte, que además gasta un número del ciclo por cada intento --
+    o sea que un doble clic sin protección no solo duplica, también desordena
+    la numeración de la planta.
+    """
+    servicio = CorteService(db)
+    datos = CorteCreate(
+        fecha=date(2026, 2, 1),
+        lineas=[LineaCorteCreate(tipo_producto_id=lote.tipo_producto_id, cantidad=250)],
     )
 
     primero = servicio.crear(empresa.id, datos, idempotency_key=CLAVE)
     segundo = servicio.crear(empresa.id, datos, idempotency_key=CLAVE)
 
     assert primero.id == segundo.id
-    # El del fixture más UNO: la segunda llamada no creó nada.
+    # El del fixture más UNA línea: la segunda llamada no creó nada.
     assert len(db.execute(select(Lote)).scalars().all()) == 2
+    db.refresh(empresa)
+    assert empresa.corte_ultimo_numero == 1
