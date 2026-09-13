@@ -88,7 +88,12 @@ def eliminar_incidencia(
 def convertir_en_devolucion(
     incidencia_id: int,
     empresa_id: int = Depends(get_empresa_id),
-    _admin: Usuario = Depends(require_admin),
+    # Era de admin, y la única razón escrita era la plata: "la merma no se le
+    # paga al taller y una entrega sí". Eso murió con c4a83f1e6db0. Quien
+    # llama a los talleres por los arreglos y sabe si volvieron bien es CORTE,
+    # así que tener que ir a buscar al dueño para marcarlo era un trámite sin
+    # dueño real.
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     """No era merma: el taller sí entregó esas unidades. Borra la incidencia y

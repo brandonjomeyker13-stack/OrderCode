@@ -135,7 +135,10 @@ MATRIZ = {
     ("/api/v1/asignaciones/{asignacion_id}", "DELETE"): require_admin,
     ("/api/v1/incidencias/{incidencia_id}", "PATCH"): require_admin,
     ("/api/v1/incidencias/{incidencia_id}", "DELETE"): require_admin,
-    ("/api/v1/incidencias/{incidencia_id}/convertir-en-devolucion", "POST"): require_admin,
+    # Marcar que unas prendas volvieron arregladas es de corte: es quien llama
+    # a los talleres por los arreglos. Era de admin por la plata, y la plata
+    # se fue en c4a83f1e6db0.
+    ("/api/v1/incidencias/{incidencia_id}/convertir-en-devolucion", "POST"): requiere_corte,
     ("/api/v1/talleres/{taller_id}", "PATCH"): require_admin,
     ("/api/v1/talleres/{taller_id}", "DELETE"): require_admin,
     ("/api/v1/tipos-producto/{tipo_producto_id}", "PATCH"): require_admin,

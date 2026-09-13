@@ -180,6 +180,8 @@ def generar_ficha_tecnica(
     fecha_asignacion: date,
     lote_id: int,
     asignacion_id: int,
+    corte: str | None = None,
+    color: str | None = None,
 ) -> bytes:
     """
     Ficha técnica que se le manda al taller cuando se le asigna un lote: qué
@@ -200,11 +202,21 @@ def generar_ficha_tecnica(
         author=empresa_nombre,
     )
 
+    # El taller busca el bulto por el corte y el color, no por un id interno.
+    # "N.º de lote 17" no le dice nada a nadie en la planta; "Corte 07 · 12 sep"
+    # es como se nombra de verdad. El id se conserva al final porque sigue
+    # siendo lo que identifica la fila si hay que rastrear algo.
     detalle = [
         ("Producto", tipo_producto_nombre),
         ("Referencia", tipo_producto_referencia),
-        ("N.º de lote", str(lote_id)),
+    ]
+    if corte:
+        detalle.append(("Corte", corte))
+    if color:
+        detalle.append(("Color", color))
+    detalle += [
         ("N.º de asignación", str(asignacion_id)),
+        ("N.º de lote", str(lote_id)),
     ]
 
     generado = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")

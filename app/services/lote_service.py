@@ -11,6 +11,7 @@ from app.models.lote import Lote
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.lote_repository import LoteRepository
 from app.repositories.tipo_producto_repository import TipoProductoRepository
+from app.services.corte_service import etiqueta_de
 from app.schemas.lote import LoteConDisponibilidad, LoteCreate, LoteUpdate
 
 # Ver el comentario de RUTA_CREAR en asignacion_taller_service.
@@ -84,6 +85,8 @@ class LoteService:
             tipo_producto=lote.tipo_producto,
             cantidad_asignada_total=asignado,
             cantidad_disponible=lote.cantidad_total - asignado,
+            color=lote.color.nombre if lote.color else None,
+            corte=etiqueta_de(lote.corte) if lote.corte else None,
         )
 
     def _con_disponibilidad(self, lote: Lote, empresa_id: int) -> LoteConDisponibilidad:

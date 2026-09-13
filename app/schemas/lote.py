@@ -38,3 +38,8 @@ class LoteConDisponibilidad(LoteOut):
     """Para la vista del QR: cuánto de este lote sigue sin asignar."""
     cantidad_asignada_total: int
     cantidad_disponible: int
+    #: Del mismo producto pueden salir varias líneas del mismo corte en
+    #: colores distintos. Sin esto, al escanear el QR salen filas idénticas y
+    #: no hay forma de saber cuál es cuál.
+    color: str | None = None
+    corte: str | None = None

@@ -27,7 +27,11 @@ class LoteRepository(BaseRepository[Lote]):
     def get_by_id(self, id: int, empresa_id: int) -> Lote | None:
         stmt = (
             select(Lote)
-            .options(selectinload(Lote.tipo_producto))
+            .options(
+                selectinload(Lote.tipo_producto),
+                selectinload(Lote.color),
+                selectinload(Lote.corte),
+            )
             .where(Lote.id == id, Lote.empresa_id == empresa_id)
         )
         return self.db.execute(stmt).scalar_one_or_none()
@@ -35,7 +39,11 @@ class LoteRepository(BaseRepository[Lote]):
     def list(self, empresa_id: int, offset: int = 0, limit: int = 50) -> list[Lote]:
         stmt = (
             select(Lote)
-            .options(selectinload(Lote.tipo_producto))
+            .options(
+                selectinload(Lote.tipo_producto),
+                selectinload(Lote.color),
+                selectinload(Lote.corte),
+            )
             .where(Lote.empresa_id == empresa_id)
             .offset(offset)
             .limit(limit)
@@ -53,7 +61,11 @@ class LoteRepository(BaseRepository[Lote]):
         """
         stmt = (
             select(Lote)
-            .options(selectinload(Lote.tipo_producto))
+            .options(
+                selectinload(Lote.tipo_producto),
+                selectinload(Lote.color),
+                selectinload(Lote.corte),
+            )
             .where(
                 Lote.tipo_producto_id == tipo_producto_id,
                 Lote.empresa_id == empresa_id,
@@ -74,7 +86,11 @@ class LoteRepository(BaseRepository[Lote]):
         la escritura ya es serializada."""
         stmt = (
             select(Lote)
-            .options(selectinload(Lote.tipo_producto))
+            .options(
+                selectinload(Lote.tipo_producto),
+                selectinload(Lote.color),
+                selectinload(Lote.corte),
+            )
             .where(Lote.id == id, Lote.empresa_id == empresa_id)
             .with_for_update()
         )

@@ -220,14 +220,20 @@ class IncidenciaService:
         self.db.commit()
 
     def convertir_en_devolucion(self, id: int, empresa_id: int) -> AsignacionTallerOut:
-        """La merma no era tal: el taller sí entregó esas unidades. Se borra la
-        incidencia y se registra una devolución por la misma cantidad.
+        """Las unidades volvieron: se borra la merma y se registra la entrega.
 
-        El saldo de la asignación no se mueve -- esas unidades ya contaban como
-        resueltas, solo cambian de columna (de merma a devuelta) -- así que
-        esto nunca puede sobrepasar lo asignado. Lo que sí cambia es la plata:
-        la merma no se le paga al taller y una entrega sí, y por eso es una
-        decisión de admin y no del operario."""
+        Es el camino del ARREGLO. Bodega cuenta unas prendas como dañadas,
+        corte lo confirma y quedan en merma; el taller se las lleva, las
+        arregla y las trae de vuelta. Entonces esa merma deja de serlo.
+
+        El saldo de la asignación no se mueve -- esas unidades ya contaban
+        como resueltas, solo cambian de columna, de merma a devuelta -- así
+        que esto NUNCA puede sobrepasar lo asignado por muchas vueltas que dé
+        la prenda. Es la razón por la que el arreglo no necesita un modelo
+        propio: sin plata de por medio, ir y volver no descuadra nada.
+
+        Lo decide CORTE, que es quien llama a los talleres por los arreglos y
+        quien sabe si volvieron bien."""
         incidencia = self._obtener_modelo(id, empresa_id)
         asignacion = incidencia.asignacion
         cantidad = incidencia.cantidad_afectada

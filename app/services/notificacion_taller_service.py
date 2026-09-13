@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.email import enviar_email
 from app.core.pdf import generar_ficha_tecnica
+from app.services.corte_service import etiqueta_de
 from app.core.whatsapp import enviar_documento_whatsapp
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.enums import CanalNotificacion, EstadoNotificacion
@@ -84,6 +85,8 @@ def _intentar_notificar(
             fecha_asignacion=asignacion.fecha_asignacion,
             lote_id=lote.id,
             asignacion_id=asignacion.id,
+            corte=etiqueta_de(lote.corte) if lote.corte else None,
+            color=lote.color.nombre if lote.color else None,
         )
     except Exception as exc:
         logger.exception(
