@@ -30,6 +30,15 @@ class Empresa(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
 
+    # --- El ciclo de numeración de cortes ---
+    #
+    # Va por empresa porque el producto se quiere vender a otras maquilas y
+    # no todas cuentan hasta 100. `corte_ultimo_numero` es el contador: se
+    # incrementa con la fila de la empresa bloqueada, que es lo que evita que
+    # dos cortes registrados a la vez se lleven el mismo número.
+    corte_numero_max: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    corte_ultimo_numero: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # Derecho de supresión (Ley 1581): cuándo el cliente pidió borrar su
     # cuenta. No borra nada de inmediato -- hay un periodo de gracia en el que
     # se puede cancelar (ver EmpresaService.solicitar_eliminacion), y solo

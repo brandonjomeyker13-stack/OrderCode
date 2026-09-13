@@ -9,6 +9,8 @@ from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationErro
 from app.core.security import verify_password
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.conteo_recepcion import ConteoRecepcion
+from app.models.color import Color
+from app.models.corte import Corte
 from app.models.venta import Venta
 from app.models.devolucion import Devolucion
 from app.models.empresa import Empresa
@@ -128,6 +130,10 @@ class EmpresaService:
         # Antes que Lote: cuelga de el.
         Venta,
         Lote,
+        # Despues de Lote: las lineas le apuntan con RESTRICT, asi que el
+        # orden importa o Postgres rechaza el borrado.
+        Corte,
+        Color,
         TipoProducto,
         QRCode,
         Taller,

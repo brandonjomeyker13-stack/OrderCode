@@ -10,6 +10,8 @@ from app.models.usuario import Usuario
 from app.models.qr_code import QRCode
 from app.models.tipo_producto import TipoProducto
 from app.models.taller import Taller
+from app.models.color import Color
+from app.models.corte import Corte
 from app.models.lote import Lote
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.incidencia import Incidencia
@@ -38,6 +40,8 @@ __all__ = [
     "Devolucion",
     "ConteoRecepcion",
     "Venta",
+    "Color",
+    "Corte",
     "RefreshToken",
     "IdempotencyKey",
     "PasswordResetToken",

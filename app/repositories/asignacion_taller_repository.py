@@ -139,7 +139,11 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
             select(AsignacionTaller)
             .options(
                 selectinload(AsignacionTaller.taller),
-                selectinload(AsignacionTaller.lote).selectinload(Lote.tipo_producto),
+                selectinload(AsignacionTaller.lote).options(
+                    selectinload(Lote.tipo_producto),
+                    selectinload(Lote.color),
+                    selectinload(Lote.corte),
+                ),
             )
             .where(
                 AsignacionTaller.empresa_id == empresa_id,

@@ -19,11 +19,25 @@ from app.schemas.recepcion import (
     PendienteDeRecibirOut,
 )
 from app.schemas.taller import TallerOut
+from app.services.corte_service import etiqueta_de
 
 #: Identifica la operación ante el registro de Idempotency-Key. Es un
 #: identificador opaco, no una URL: si la ruta cambia, este literal NO debe
 #: cambiar o las claves ya emitidas dejan de reconocerse.
 RUTA_CONTEO = "POST /recepcion/conteos"
+
+def _color_de(lote) -> str | None:
+    return lote.color.nombre if lote.color else None
+
+
+def _corte_de(lote) -> str | None:
+    """La etiqueta del corte al que pertenece la línea, si lo tiene.
+
+    Los lotes de antes del rediseño tienen un corte histórico sin número, y la
+    etiqueta lo dice ("Corte · 11 sep") en vez de inventar uno.
+    """
+    return etiqueta_de(lote.corte) if lote.corte else None
+
 
 
 def construir_conteo_bodega(conteo: ConteoRecepcion) -> ConteoBodegaOut:
@@ -41,6 +55,8 @@ def construir_conteo_bodega(conteo: ConteoRecepcion) -> ConteoBodegaOut:
         lote_id=asignacion.lote_id,
         taller=TallerOut.model_validate(asignacion.taller),
         producto=asignacion.lote.tipo_producto.nombre,
+        color=_color_de(asignacion.lote),
+        corte=_corte_de(asignacion.lote),
         cantidad_buena=conteo.cantidad_buena,
         cantidad_danada=conteo.cantidad_danada,
         fecha=conteo.fecha,
@@ -83,6 +99,8 @@ class RecepcionBodegaService:
                 taller=TallerOut.model_validate(a.taller),
                 producto=a.lote.tipo_producto.nombre,
                 referencia=a.lote.tipo_producto.referencia,
+                color=_color_de(a.lote),
+                corte=_corte_de(a.lote),
                 fecha_asignacion=a.fecha_asignacion,
                 conteos_registrados=conteos.get(a.id, 0),
             )

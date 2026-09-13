@@ -75,6 +75,13 @@ class PendienteDeRecibirOut(BaseModel):
     taller: TallerOut
     producto: str
     referencia: str
+    #: Sin esto, dos bultos del mismo producto en colores distintos salen como
+    #: dos filas idénticas y bodega no sabe cuál tiene delante. No es una
+    #: cantidad: se puede mostrar sin romper el conteo a ciegas.
+    color: str | None
+    #: "Corte 07 · 12 sep". La identidad que se dice en voz alta, mejor que un
+    #: id interno para buscar el bulto entre varios.
+    corte: str | None
     fecha_asignacion: date
     #: Cuántos conteos ya anotó bodega para este bulto, para que sepa si es la
     #: primera tanda o ya lleva varias. Es un conteo de eventos, no de piezas.
@@ -95,6 +102,8 @@ class ConteoBodegaOut(TimestampSchema):
     lote_id: int
     taller: TallerOut
     producto: str
+    color: str | None
+    corte: str | None
     cantidad_buena: int
     cantidad_danada: int
     fecha: date
@@ -120,6 +129,8 @@ class ConteoPorConfirmarOut(TimestampSchema):
     taller: TallerOut
     producto: str
     referencia: str
+    color: str | None
+    corte: str | None
 
     cantidad_buena: int
     cantidad_danada: int

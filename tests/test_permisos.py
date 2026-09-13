@@ -47,6 +47,12 @@ GUARDIAS = {
 MATRIZ = {
     # --- El corte sale y se manda al taller: es el trabajo de CORTE ---
     ("/api/v1/lotes", "POST"): requiere_corte,
+    # El tendido entero: cabecera y líneas de una vez.
+    ("/api/v1/cortes", "POST"): requiere_corte,
+    # Leerlo lleva cantidades, así que lo ven los tres que pueden verlas.
+    ("/api/v1/cortes", "GET"): puede_ver_cantidades,
+    ("/api/v1/cortes/{corte_id}", "GET"): puede_ver_cantidades,
+    ("/api/v1/colores", "POST"): requiere_corte,
     ("/api/v1/asignaciones", "POST"): requiere_corte,
     ("/api/v1/asignaciones/por-lote/{lote_id}", "GET"): requiere_corte,
     ("/api/v1/asignaciones/{asignacion_id}/reenviar-notificacion", "POST"): requiere_corte,
@@ -114,6 +120,9 @@ MATRIZ = {
     # rediseño: quien captura no corrige su propia captura. Si CORTE pudiera
     # editar la cantidad de un lote después de asignarlo, ajustaría la cifra
     # contra la que se mide a BODEGA y el conteo a dos manos quedaría en nada.
+    ("/api/v1/cortes/{corte_id}", "PATCH"): require_admin,
+    ("/api/v1/colores/{color_id}", "PATCH"): require_admin,
+    ("/api/v1/colores/{color_id}", "DELETE"): require_admin,
     ("/api/v1/lotes/{lote_id}", "PATCH"): require_admin,
     ("/api/v1/lotes/{lote_id}", "DELETE"): require_admin,
     ("/api/v1/lotes/{lote_id}/cerrar-cliente", "POST"): require_admin,
@@ -152,6 +161,10 @@ MATRIZ = {
     # --- Las cuatro personas, sin distinción ---
     ("/api/v1/empresas/actual", "GET"): None,
     ("/api/v1/tipos-producto", "GET"): None,
+    # El catálogo de colores lo lee todo el mundo: bodega lo necesita para
+    # saber cuál de dos bultos del mismo producto tiene delante, y un nombre
+    # de color no es una cantidad.
+    ("/api/v1/colores", "GET"): None,
     ("/api/v1/tipos-producto/{tipo_producto_id}", "GET"): None,
     ("/api/v1/tipos-producto/qr/{token}", "GET"): None,
     ("/api/v1/usuarios/me/configurar-password", "POST"): None,

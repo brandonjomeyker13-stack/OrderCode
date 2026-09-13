@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.conteo_recepcion import ConteoRecepcion
 from app.models.enums import EstadoConteo
+from app.models.lote import Lote
 from app.repositories.base import BaseRepository
 
 
@@ -33,7 +34,11 @@ class ConteoRecepcionRepository(BaseRepository[ConteoRecepcion]):
         """
         return selectinload(ConteoRecepcion.asignacion).options(
             selectinload(AsignacionTaller.taller),
-            selectinload(AsignacionTaller.lote),
+            selectinload(AsignacionTaller.lote).options(
+                selectinload(Lote.tipo_producto),
+                selectinload(Lote.color),
+                selectinload(Lote.corte),
+            ),
         )
 
     def listar_por_estado(

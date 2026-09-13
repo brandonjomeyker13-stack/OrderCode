@@ -20,6 +20,7 @@ from app.repositories.lote_repository import LoteRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.recepcion import ConteoPorConfirmarOut
 from app.schemas.taller import TallerOut
+from app.services.corte_service import etiqueta_de
 from app.services.asignacion_taller_service import (
     AsignacionTallerService,
     recalcular_estado_asignacion,
@@ -190,6 +191,8 @@ class ConfirmacionCorteService:
             taller=TallerOut.model_validate(asignacion.taller),
             producto=asignacion.lote.tipo_producto.nombre,
             referencia=asignacion.lote.tipo_producto.referencia,
+            color=asignacion.lote.color.nombre if asignacion.lote.color else None,
+            corte=etiqueta_de(asignacion.lote.corte) if asignacion.lote.corte else None,
             cantidad_buena=conteo.cantidad_buena,
             cantidad_danada=conteo.cantidad_danada,
             fecha=conteo.fecha,
