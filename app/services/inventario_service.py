@@ -18,6 +18,7 @@ from app.schemas.inventario import (
     VentaOut,
     VentaUpdate,
 )
+from app.services.corte_service import etiqueta_de
 
 #: Identificador opaco de la operación ante Idempotency-Key. No es una URL.
 RUTA_VENTA = "POST /inventario/ventas"
@@ -49,6 +50,8 @@ class InventarioService:
                 lote_id=lote.id,
                 producto=lote.tipo_producto.nombre,
                 referencia=lote.tipo_producto.referencia,
+                color=lote.color.nombre if lote.color else None,
+                corte=etiqueta_de(lote.corte) if lote.corte else None,
                 fecha_registro=lote.fecha_registro,
                 cantidad_lista=listo,
                 cantidad_vendida=salido,
@@ -184,6 +187,8 @@ class InventarioService:
             lote_id=venta.lote_id,
             producto=venta.lote.tipo_producto.nombre,
             referencia=venta.lote.tipo_producto.referencia,
+            color=venta.lote.color.nombre if venta.lote.color else None,
+            corte=etiqueta_de(venta.lote.corte) if venta.lote.corte else None,
             cantidad=venta.cantidad,
             fecha=venta.fecha,
             nota=venta.nota,

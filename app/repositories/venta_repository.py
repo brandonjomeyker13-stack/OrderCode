@@ -19,7 +19,13 @@ class VentaRepository(BaseRepository[Venta]):
         stmt = (
             select(Venta)
             .where(Venta.empresa_id == empresa_id)
-            .options(selectinload(Venta.lote).selectinload(Lote.tipo_producto))
+            .options(
+                selectinload(Venta.lote).options(
+                    selectinload(Lote.tipo_producto),
+                    selectinload(Lote.color),
+                    selectinload(Lote.corte),
+                )
+            )
             .order_by(Venta.fecha.desc(), Venta.id.desc())
             .offset(offset)
             .limit(limit)
@@ -120,7 +126,11 @@ class VentaRepository(BaseRepository[Venta]):
     ) -> list[tuple[Lote, int, int]]:
         origen, _, _ = self._inventario_base(empresa_id)
         stmt = (
-            origen.options(selectinload(Lote.tipo_producto))
+            origen.options(
+                selectinload(Lote.tipo_producto),
+                selectinload(Lote.color),
+                selectinload(Lote.corte),
+            )
             .order_by(Lote.id.desc())
             .offset(offset)
             .limit(limit)

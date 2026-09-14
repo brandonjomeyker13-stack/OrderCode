@@ -24,6 +24,12 @@ class LineaInventarioOut(BaseModel):
     lote_id: int
     producto: str
     referencia: str
+    #: Del mismo producto salen varias tandas en colores distintos, y cada una
+    #: es su propia fila con su propio disponible: se venden por separado. Sin
+    #: el color, dos filas idénticas y nadie sabe cuál está despachando.
+    color: str | None
+    #: "Corte 07 · 12 sep". Cómo se dice la tanda en voz alta.
+    corte: str | None
     fecha_registro: date
 
     #: Unidades que volvieron BIEN del taller y que corte ya confirmó. Lo
@@ -79,6 +85,10 @@ class VentaOut(TimestampSchema):
     lote_id: int
     producto: str
     referencia: str
+    #: La misma razón que en la línea de inventario: sin color y sin corte, el
+    #: historial de salidas no dice de cuál de las tandas salió.
+    color: str | None
+    corte: str | None
     cantidad: int
     fecha: date
     nota: str | None

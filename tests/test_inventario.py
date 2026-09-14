@@ -27,9 +27,12 @@ from app.models.taller import Taller
 from app.models.tipo_producto import TipoProducto
 from app.models.usuario import Usuario
 from app.schemas.asignacion_taller import AsignacionTallerCreate
+from app.schemas.corte import ColorCreate, CorteCreate, LineaCorteCreate
 from app.schemas.inventario import VentaCreate, VentaUpdate
 from app.schemas.recepcion import ConteoCreate
 from app.services.asignacion_taller_service import AsignacionTallerService
+from app.services.color_service import ColorService
+from app.services.corte_service import CorteService
 from app.services.inventario_service import InventarioService
 from app.services.recepcion.bodega import RecepcionBodegaService
 from app.services.recepcion.corte import ConfirmacionCorteService
@@ -291,6 +294,69 @@ def test_borrar_la_salida_devuelve_las_unidades(
     assert servicio.resumen(empresa.id).total_disponible == 50
     with pytest.raises(NotFoundError):
         servicio.obtener(venta.id, empresa.id)
+
+
+# --- Los colores se venden por separado ---
+
+
+def test_dos_colores_del_mismo_producto_son_dos_filas_que_se_venden_aparte(
+    db: Session, empresa: Empresa, taller: Taller, bodega, corte, ventas
+):
+    """Del mismo tendido salen el negro y el blanco, y cada uno es su propia
+    línea: quien despacha tiene que ver de qué color hay y cuántos, y sacar de
+    uno no puede tocar el otro. Sin el color en la respuesta son dos filas
+    idénticas y se despacha a ciegas."""
+    negro = ColorService(db).crear(empresa.id, ColorCreate(nombre="Negro"))
+    blanco = ColorService(db).crear(empresa.id, ColorCreate(nombre="Blanco"))
+    qr = QRCode(empresa_id=empresa.id, token="token-colores")
+    db.add(qr)
+    db.flush()
+    tipo = TipoProducto(
+        empresa_id=empresa.id, nombre="Legging", referencia="LEG-01", qr_code_id=qr.id
+    )
+    db.add(tipo)
+    db.commit()
+
+    tendido = CorteService(db).crear(
+        empresa.id,
+        CorteCreate(
+            fecha=SALIDA,
+            lineas=[
+                LineaCorteCreate(tipo_producto_id=tipo.id, color_id=negro.id, cantidad=30),
+                LineaCorteCreate(tipo_producto_id=tipo.id, color_id=blanco.id, cantidad=20),
+            ],
+        ),
+    )
+    por_color = {linea.color: linea.lote_id for linea in tendido.lineas}
+    for color, cantidad in (("Negro", 30), ("Blanco", 20)):
+        envio = AsignacionTallerService(db).crear(
+            empresa.id,
+            AsignacionTallerCreate(
+                lote_id=por_color[color],
+                taller_id=taller.id,
+                cantidad_asignada=cantidad,
+                fecha_asignacion=SALIDA,
+            ),
+        )
+        _recibir(db, empresa, envio, bodega, corte, buenas=cantidad)
+
+    servicio = InventarioService(db)
+    lineas = {linea.color: linea for linea in servicio.resumen(empresa.id).lineas}
+
+    assert lineas["Negro"].cantidad_disponible == 30
+    assert lineas["Blanco"].cantidad_disponible == 20
+    assert lineas["Negro"].corte == tendido.etiqueta, "hay que saber de qué corte salió"
+
+    venta = servicio.registrar(
+        empresa.id,
+        VentaCreate(lote_id=por_color["Negro"], cantidad=10, fecha=VENTA),
+        usuario_id=ventas.id,
+    )
+
+    assert venta.color == "Negro", "la salida dice de qué color salió"
+    despues = {linea.color: linea for linea in servicio.resumen(empresa.id).lineas}
+    assert despues["Negro"].cantidad_disponible == 20
+    assert despues["Blanco"].cantidad_disponible == 20, "el otro color no se movió"
 
 
 # --- Paginación: la página no puede cambiar los totales ---
