@@ -78,12 +78,8 @@ pertenece.
   Meta responda.
 - **La merma no devuelve stock.** Las unidades dañadas salen de lo pendiente
   del taller, pero no vuelven a estar disponibles en el lote.
-- **El precio por unidad está duplicado a propósito.** El vigente vive en
-  `tipos_producto.precio_unitario` y se edita cuando sube la mano de obra;
-  cada asignación se lleva una copia al crearse. Sin esa copia, subir la
-  tarifa reescribiría el monto de los cortes ya pagados. Corregir un precio
-  mal digitado en una asignación concreta se hace por `PATCH /asignaciones/{id}`,
-  y solo mientras siga pristina.
+- **El sistema no maneja plata.** Las tarifas a talleres se liquidan fuera
+  de la app. Aquí solo hay unidades: asignadas, entregadas, merma, pendientes.
 - **El ranking de talleres (`GET /ranking/talleres`) mezcla dos tipos de
   cifra a propósito.** Casi todas son del periodo pedido (lo entregado, lo
   dañado, lo asignado), pero `unidades_pendientes` es un saldo de hoy:
@@ -91,12 +87,9 @@ pertenece.
   el taller tiene en su poder se le asignó antes. Ambas fechas del periodo
   son inclusivas — dejar fuera el último día le restaría un día de trabajo
   al taller en cada corte.
-- **El ranking y su Excel son solo para administradores.** No es un tablero
-  de producción más: junta en una tabla cuánto se le paga a cada taller, que
-  es información de proveedores. El precio por unidad sigue visible en el
-  catálogo y en las asignaciones, donde es un parámetro de producción.
-  `tests/test_permisos.py` verifica el mapa de permisos en ambos sentidos:
-  que lo sensible esté cerrado y que la operación diaria siga abierta.
+- **El ranking y su Excel los ven admin y corte.** Corte es quien paga a los
+  talleres y necesita el comparativo por periodo (quincena, mes, o fechas
+  libres). Bodega y ventas no. `tests/test_permisos.py` verifica el mapa.
 - **La importación es en dos pasos y todo o nada.** `POST
   /importacion/previsualizar` no escribe nada: dice qué se crearía y qué está
   mal, con el número de fila del Excel. `POST /importacion/confirmar` crea, y

@@ -6,10 +6,9 @@ Crea una empresa de demostración con datos realistas, para enseñar el producto
     python -m scripts.sembrar_demo --borrar     # solo la borra
     ... --forzar                                # sin pedir confirmación
 
-Por qué existe: con los datos reales de hoy, el ranking sale en ceros y con el
-aviso rojo de "sin tarifa", porque las asignaciones viejas son anteriores a
-que existieran los precios. Delante de un cliente potencial eso se ve como un
-producto roto, aunque sea el comportamiento correcto.
+Por qué existe: con una base vacía o sin movimiento reciente, el ranking sale
+en ceros y delante de un cliente potencial eso se ve como un producto roto.
+Esta demo llena dos meses de producción realista para enseñar el comparativo.
 
 Las fechas se calculan hacia atrás desde HOY, así que la demo nunca se ve
 vieja: siempre muestra los últimos dos meses de "producción".
@@ -21,7 +20,6 @@ import logging
 import secrets
 import sys
 from datetime import datetime, time, timedelta, timezone
-from decimal import Decimal
 
 from sqlalchemy import delete, func, select
 
@@ -68,18 +66,18 @@ _TALLERES = (
     ("Maquilas del Norte", "003", "3159876543", None, "Km 3 vía Pamplona", True),
     ("Taller La Esperanza", "004", "3152223344", "esperanza@correo.com", None, True),
     ("Taller Nuevo Amanecer", "005", "3155556677", None, "Barrio La Libertad", True),
-    # Inactivo pero con movimiento: aparece marcado en el ranking porque se le
-    # puede deber plata del corte anterior a haberlo dado de baja.
+    # Inactivo pero con movimiento: aparece marcado en el ranking porque todavía
+    # puede tener prendas de antes de haberlo dado de baja.
     ("Costuras Vélez", "006", "3158889900", None, None, False),
 )
 
-# (nombre, referencia, precio por unidad)
+# (nombre, referencia)
 _PRODUCTOS = (
-    ("Legging deportivo tiro alto", "LEG-001", "4200"),
-    ("Biker short compresión", "BIK-002", "3800"),
-    ("Top deportivo espalda cruzada", "TOP-003", "3200"),
-    ("Vestido casual en punto", "VES-004", "6500"),
-    ("Camiseta básica algodón", "CAM-005", "2600"),
+    ("Legging deportivo tiro alto", "LEG-001"),
+    ("Biker short compresión", "BIK-002"),
+    ("Top deportivo espalda cruzada", "TOP-003"),
+    ("Vestido casual en punto", "VES-004"),
+    ("Camiseta básica algodón", "CAM-005"),
 )
 
 # Cada lote: (producto, cantidad, días atrás en que se registró, asignaciones)
@@ -258,7 +256,7 @@ def _sembrar(db, clave: str) -> None:
         talleres.append(taller)
 
     productos = []
-    for nombre, referencia, precio in _PRODUCTOS:
+    for nombre, referencia in _PRODUCTOS:
         qr = QRCode(empresa_id=empresa.id, token=secrets.token_urlsafe(32))
         db.add(qr)
         db.flush()
@@ -266,7 +264,6 @@ def _sembrar(db, clave: str) -> None:
             empresa_id=empresa.id,
             nombre=nombre,
             referencia=referencia,
-            precio_unitario=Decimal(precio),
             qr_code_id=qr.id,
         )
         db.add(producto)
@@ -294,8 +291,6 @@ def _sembrar(db, clave: str) -> None:
                 taller_id=talleres[idx_taller].id,
                 cantidad_asignada=cantidad,
                 fecha_asignacion=_fecha(dias_asig),
-                # Copia del precio vigente, igual que en el flujo real.
-                precio_unitario=producto.precio_unitario,
                 estado=EstadoAsignacion.ASIGNADO,
             )
             db.add(asignacion)

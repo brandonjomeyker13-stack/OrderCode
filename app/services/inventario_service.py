@@ -38,34 +38,31 @@ class InventarioService:
         Se listan solo las tandas que tienen algo disponible. Un lote agotado
         no es inventario, es historia -- y la historia se mira en la lista de
         salidas, no aquí.
-        """
-        lotes = self.lote_repo.list(empresa_id, offset=offset, limit=limit)
-        ids = [lote.id for lote in lotes]
-        devuelto = self.repo.devuelto_por_lote(ids, empresa_id)
-        vendido = self.repo.vendido_por_lote(ids, empresa_id)
 
-        lineas = []
-        for lote in lotes:
-            listo = devuelto.get(lote.id, 0)
-            salido = vendido.get(lote.id, 0)
-            disponible = listo - salido
-            if disponible <= 0:
-                continue
-            lineas.append(
-                LineaInventarioOut(
-                    lote_id=lote.id,
-                    producto=lote.tipo_producto.nombre,
-                    referencia=lote.tipo_producto.referencia,
-                    fecha_registro=lote.fecha_registro,
-                    cantidad_lista=listo,
-                    cantidad_vendida=salido,
-                    cantidad_disponible=disponible,
-                )
+        El filtro y los totales los hace la base: la página trae solo lotes
+        con existencias, y los totales son de la empresa entera. Si se
+        calcularan sobre la página, pedir la segunda daría un inventario
+        distinto al de la primera.
+        """
+        lineas = [
+            LineaInventarioOut(
+                lote_id=lote.id,
+                producto=lote.tipo_producto.nombre,
+                referencia=lote.tipo_producto.referencia,
+                fecha_registro=lote.fecha_registro,
+                cantidad_lista=listo,
+                cantidad_vendida=salido,
+                cantidad_disponible=listo - salido,
             )
+            for lote, listo, salido in self.repo.lotes_con_disponible(
+                empresa_id, offset=offset, limit=limit
+            )
+        ]
 
         return ResumenInventarioOut(
-            total_disponible=sum(linea.cantidad_disponible for linea in lineas),
-            total_vendido=sum(vendido.values()),
+            total_disponible=self.repo.total_disponible(empresa_id),
+            total_vendido=self.repo.total_vendido(empresa_id),
+            total_lineas=self.repo.contar_lotes_con_disponible(empresa_id),
             lineas=lineas,
         )
 
@@ -93,7 +90,9 @@ class InventarioService:
         if recurso_id is not None:
             return self.obtener(recurso_id, empresa_id)
 
-        lote = self.lote_repo.get_by_id(data.lote_id, empresa_id)
+        # Lock de fila del lote antes de leer disponible: sin él, dos salidas
+        # concurrentes del mismo lote leen el mismo saldo y ambas pasan.
+        lote = self.lote_repo.get_by_id_bloqueando(data.lote_id, empresa_id)
         if lote is None:
             raise NotFoundError("No encontramos ese lote")
 
@@ -137,6 +136,10 @@ class InventarioService:
         cambios = data.model_dump(exclude_unset=True)
 
         if "cantidad" in cambios:
+            # Mismo lock que al registrar: dos correcciones a la vez no deben
+            # inventar unidades que no hay.
+            if self.lote_repo.get_by_id_bloqueando(venta.lote_id, empresa_id) is None:
+                raise NotFoundError("No encontramos ese lote")
             # El disponible de ahora ya descuenta ESTA venta, así que hay que
             # devolvérsela antes de comparar; si no, corregir 10 por 11 daría
             # "no hay disponible" aunque sobre de todo.

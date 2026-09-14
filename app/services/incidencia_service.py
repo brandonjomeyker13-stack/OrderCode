@@ -235,7 +235,13 @@ class IncidenciaService:
         Lo decide CORTE, que es quien llama a los talleres por los arreglos y
         quien sabe si volvieron bien."""
         incidencia = self._obtener_modelo(id, empresa_id)
-        asignacion = incidencia.asignacion
+        # Lock de la asignación: sin él, confirmar un conteo y convertir una
+        # merma a la vez pueden pisar cantidad_devuelta.
+        asignacion = self.asignacion_repo.get_by_id_bloqueando(
+            incidencia.asignacion_id, empresa_id
+        )
+        if asignacion is None:
+            raise NotFoundError("No encontramos la asignación de esa merma")
         cantidad = incidencia.cantidad_afectada
 
         # La devolución guarda hora y la incidencia solo día: se ancla al

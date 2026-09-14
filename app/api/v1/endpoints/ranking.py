@@ -5,21 +5,18 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id
-from app.core.deps import require_admin
+from app.core.deps import requiere_corte
 from app.db.session import get_db
 from app.models.usuario import Usuario
 from app.schemas.ranking import RankingTalleres
 from app.services.ranking_service import RankingService
 
-# Solo administradores. El ranking no es un tablero de producción más: pone a
-# los talleres uno al lado del otro y los califica -- quién entrega más, quién
-# daña más, quién se demora. Eso es una evaluación de proveedores, y que
-# circule entre quienes capturan a diario suele terminar en una conversación
-# incómoda para el dueño de la empresa.
+# Admin + corte. Corte es quien paga a los talleres y necesita ver, por
+# periodo, cuánto entregó cada uno (unidades, merma, tiempos, pendiente).
+# Bodega y ventas quedan fuera: no es su turno ni su decisión de pago.
 #
-# La restricción se hereda de cuando la tabla además mostraba cuánto se le
-# pagaba a cada taller. Ya no hay plata en el sistema, así que al definir los
-# cuatro roles vale la pena volver a preguntarse quién debería verlo.
+# Antes era solo-admin porque la tabla también mostraba tarifas. Ya no hay
+# plata en el sistema; lo que queda son cantidades de producción.
 router = APIRouter(prefix="/ranking", tags=["ranking"])
 
 
@@ -32,11 +29,11 @@ def ranking_de_talleres(
         default=None, description="Último día del corte (inclusive). Por defecto, hoy."
     ),
     empresa_id: int = Depends(get_empresa_id),
-    _admin: Usuario = Depends(require_admin),
+    _usuario: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
     """Comparativa de talleres en un periodo: cuánto entregó cada uno, cuánto
-    se dañó, qué tan rápido y qué le queda pendiente. Solo administradores.
+    se dañó, qué tan rápido y qué le queda pendiente. Admin y corte.
 
     El periodo es libre porque cada empresa cierra distinto -- quincenal,
     mensual, o por lote terminado. Ambas fechas son inclusivas: pedir del 1 al
@@ -56,15 +53,15 @@ def descargar_ranking_de_talleres(
     desde: date | None = Query(default=None),
     hasta: date | None = Query(default=None),
     empresa_id: int = Depends(get_empresa_id),
-    _admin: Usuario = Depends(require_admin),
+    _usuario: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
-    """El mismo ranking, descargable en Excel. Solo administradores.
+    """El mismo ranking, descargable en Excel. Admin y corte.
 
-    Existe porque hay gente que necesita estos números y no tiene cuenta en
-    la app: el contador, un socio, el archivo del mes. Las cuentas ya vienen
-    hechas del backend -- el Excel no es una calculadora, es el papel donde
-    se imprime lo que la app calculó.
+    Existe porque hay gente que necesita estos números fuera de la app: el
+    archivo del mes, un socio, o el propio corte al liquidar talleres. Las
+    cuentas ya vienen hechas del backend -- el Excel no es una calculadora,
+    es el papel donde se imprime lo que la app calculó.
     """
     contenido, nombre = RankingService(db).exportar_excel(empresa_id, desde=desde, hasta=hasta)
     return Response(

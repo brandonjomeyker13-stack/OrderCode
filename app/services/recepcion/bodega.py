@@ -144,6 +144,16 @@ class RecepcionBodegaService:
         if asignacion is None:
             raise NotFoundError("No encontramos ese envío a taller")
 
+        # El envío ya cerrado no admite conteos. No es una cifra: es el mismo
+        # estado por el que ese envío desapareció de la lista de pendientes, y
+        # sin esta guardia el conteo se guarda y revienta después, al
+        # confirmar, dejando basura que alguien tiene que ir a borrar.
+        if asignacion.estado == EstadoAsignacion.ENTREGADO_COMPLETO:
+            raise ValidationError(
+                "Ese envío ya está cerrado: no queda nada por recibir. Actualiza la "
+                "lista, y si de verdad llegó algo más, habla con quien lleva el corte."
+            )
+
         # Sí se valida la FECHA. No dice nada de cantidades y evita el dedazo
         # más común (el año anterior por costumbre).
         if data.fecha < asignacion.fecha_asignacion:

@@ -189,6 +189,25 @@ def test_la_fecha_anterior_a_la_salida_se_rechaza(
     assert "anterior" in str(excinfo.value.message)
 
 
+def test_el_envio_ya_cerrado_no_admite_otro_conteo(
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
+):
+    """Ese envío ya no sale en la lista de bodega: si llega un conteo suyo es
+    una pantalla vieja. Sin esta guardia el reporte se guardaba y reventaba
+    después, al confirmar, dejando una fila que alguien tenía que ir a borrar.
+
+    El mensaje no puede nombrar cantidades: lo lee bodega."""
+    conteo = _contar(db, empresa, asignacion, bodega, buenas=50)
+    ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
+
+    with pytest.raises(ValidationError) as excinfo:
+        _contar(db, empresa, asignacion, bodega, buenas=5)
+
+    mensaje = excinfo.value.message
+    assert "cerrado" in mensaje
+    assert "50" not in mensaje
+
+
 # --- Lo que ve corte ---
 
 

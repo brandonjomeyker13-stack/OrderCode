@@ -20,9 +20,11 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.security import hash_password
 from app.models.empresa import Empresa
-from app.models.enums import RolUsuario
+from app.models.enums import EstadoLote, RolUsuario
 from app.models.lote import Lote
+from app.models.qr_code import QRCode
 from app.models.taller import Taller
+from app.models.tipo_producto import TipoProducto
 from app.models.usuario import Usuario
 from app.schemas.asignacion_taller import AsignacionTallerCreate
 from app.schemas.inventario import VentaCreate, VentaUpdate
@@ -289,6 +291,84 @@ def test_borrar_la_salida_devuelve_las_unidades(
     assert servicio.resumen(empresa.id).total_disponible == 50
     with pytest.raises(NotFoundError):
         servicio.obtener(venta.id, empresa.id)
+
+
+# --- Paginación: la página no puede cambiar los totales ---
+
+
+def _tanda_lista(db, empresa, taller, bodega, corte, referencia, cantidad):
+    """Un lote nuevo que ya volvió del taller y está confirmado."""
+    qr = QRCode(empresa_id=empresa.id, token=f"token-{referencia}")
+    db.add(qr)
+    db.flush()
+    tipo = TipoProducto(
+        empresa_id=empresa.id,
+        nombre=f"Producto {referencia}",
+        referencia=referencia,
+        qr_code_id=qr.id,
+    )
+    db.add(tipo)
+    db.flush()
+    lote = Lote(
+        empresa_id=empresa.id,
+        tipo_producto_id=tipo.id,
+        cantidad_total=cantidad,
+        fecha_registro=date(2026, 1, 10),
+        estado=EstadoLote.PENDIENTE_ASIGNACION,
+    )
+    db.add(lote)
+    db.commit()
+
+    asignacion = AsignacionTallerService(db).crear(
+        empresa.id,
+        AsignacionTallerCreate(
+            lote_id=lote.id,
+            taller_id=taller.id,
+            cantidad_asignada=cantidad,
+            fecha_asignacion=SALIDA,
+        ),
+    )
+    _recibir(db, empresa, asignacion, bodega, corte, buenas=cantidad)
+    return lote
+
+
+def test_los_totales_son_de_la_empresa_y_no_de_la_pagina(
+    db: Session, empresa: Empresa, taller: Taller, bodega, corte
+):
+    """El bug que esto cierra: sumar solo la página hacía que pedir la segunda
+    mostrara un inventario distinto al de la primera, y con muchos lotes el
+    total salía en una fracción de lo que había."""
+    for i in range(5):
+        _tanda_lista(db, empresa, taller, bodega, corte, f"REF-P{i}", 10)
+
+    pagina = InventarioService(db).resumen(empresa.id, offset=0, limit=2)
+
+    assert len(pagina.lineas) == 2, "la página debe respetar el límite"
+    assert pagina.total_lineas == 5, "hay cinco tandas con existencias"
+    assert pagina.total_disponible == 50, "el total es de la empresa, no de la página"
+
+
+def test_los_lotes_agotados_no_gastan_espacio_en_la_pagina(
+    db: Session, empresa: Empresa, taller: Taller, bodega, corte, ventas
+):
+    """Antes se paginaban todos los lotes y después se descartaban los que no
+    tenían nada: con historia suficiente, la primera página salía vacía y el
+    inventario parecía estar en cero."""
+    servicio = InventarioService(db)
+    for i in range(3):
+        agotado = _tanda_lista(db, empresa, taller, bodega, corte, f"REF-V{i}", 10)
+        servicio.registrar(
+            empresa.id,
+            VentaCreate(lote_id=agotado.id, cantidad=10, fecha=VENTA),
+            usuario_id=ventas.id,
+        )
+    con_stock = _tanda_lista(db, empresa, taller, bodega, corte, "REF-VIVO", 7)
+
+    pagina = servicio.resumen(empresa.id, offset=0, limit=2)
+
+    assert [linea.lote_id for linea in pagina.lineas] == [con_stock.id]
+    assert pagina.total_disponible == 7
+    assert pagina.total_vendido == 30, "lo vendido es el histórico completo"
 
 
 # --- Aislamiento entre empresas ---

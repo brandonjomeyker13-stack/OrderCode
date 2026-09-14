@@ -34,10 +34,17 @@ class LineaInventarioOut(BaseModel):
 
 
 class ResumenInventarioOut(BaseModel):
-    """El inventario completo, con el total arriba para no sumarlo a mano."""
+    """El inventario completo, con el total arriba para no sumarlo a mano.
+
+    Los totales son de la EMPRESA, no de la página: `lineas` puede traer 50
+    tandas y `total_disponible` contar las 300 que hay. `total_lineas` dice
+    cuántas tandas con existencias hay en total, para que el frontend sepa si
+    se está quedando corto.
+    """
 
     total_disponible: int
     total_vendido: int
+    total_lineas: int
     lineas: list[LineaInventarioOut]
 
 

@@ -14,8 +14,9 @@ le toca. Por eso la tabla de abajo declara el juego EXACTO de puestos de cada
 ruta, no un mínimo.
 
 El caso que motivó este archivo: el ranking de talleres y su Excel quedaron
-abiertos a cualquier usuario cuando se les agregó una cifra sensible, así que
-un operario podía ver el desempeño comparado de todos los talleres.
+abiertos a cualquier usuario cuando aún mostraban cifras sensibles. Hoy el
+ranking es de unidades (sin plata) y lo ven admin+corte, que es quien liquida
+talleres; bodega y ventas siguen fuera.
 """
 from typing import get_args
 
@@ -154,8 +155,8 @@ MATRIZ = {
     ("/api/v1/empresas/actual", "PATCH"): require_admin,
     ("/api/v1/empresas/actual/eliminar", "POST"): require_admin,
     ("/api/v1/empresas/actual/cancelar-eliminacion", "POST"): require_admin,
-    ("/api/v1/ranking/talleres", "GET"): require_admin,
-    ("/api/v1/ranking/talleres.xlsx", "GET"): require_admin,
+    ("/api/v1/ranking/talleres", "GET"): requiere_corte,
+    ("/api/v1/ranking/talleres.xlsx", "GET"): requiere_corte,
     ("/api/v1/importacion/previsualizar", "POST"): require_admin,
     ("/api/v1/importacion/confirmar", "POST"): require_admin,
     ("/api/v1/importacion/plantilla.xlsx", "GET"): require_admin,
