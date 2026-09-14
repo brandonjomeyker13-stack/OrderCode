@@ -16,36 +16,57 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.schemas.common import MAX_UNIDADES, TimestampSchema
 
 
-class LineaInventarioOut(BaseModel):
-    """Una tanda lista para vender, con lo que queda de ella."""
+class TandaDisponibleOut(BaseModel):
+    """Una tanda con existencias, y cuántas le quedan.
+
+    No es para mostrar: es para que la salida sepa de qué lote descontar. Una
+    venta se descuenta de UN lote, pero quien despacha pide "20 negras" sin
+    tener por qué saber de qué corte salieron.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     lote_id: int
+    fecha_registro: date
+    cantidad_disponible: int
+
+
+class LineaInventarioOut(BaseModel):
+    """Una prenda en un color: la unidad con la que se vende.
+
+    No es una tanda. Del mismo legging negro pueden quedar unidades de dos
+    cortes distintos, y para vender eso es una sola cosa: "leggings negros,
+    quedan 50". Las tandas van dentro, en `tandas`, y vienen completas -- si
+    se recortaran, la fila mostraría menos de lo que hay.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    tipo_producto_id: int
     producto: str
     referencia: str
-    #: Del mismo producto salen varias tandas en colores distintos, y cada una
-    #: es su propia fila con su propio disponible: se venden por separado. Sin
-    #: el color, dos filas idénticas y nadie sabe cuál está despachando.
     color: str | None
-    #: "Corte 07 · 12 sep". Cómo se dice la tanda en voz alta.
-    corte: str | None
-    fecha_registro: date
+    #: El puntito del chip, si el catálogo lo tiene.
+    color_hex: str | None
 
     #: Unidades que volvieron BIEN del taller y que corte ya confirmó. Lo
-    #: dañado no está aquí: no está listo para vender.
+    #: dañado no está aquí: no está listo para vender. Las dos cifras cuentan
+    #: solo las tandas que aún tienen existencias, no las agotadas.
     cantidad_lista: int
     cantidad_vendida: int
     cantidad_disponible: int
+
+    #: La más vieja primero, que es de donde conviene sacar.
+    tandas: list[TandaDisponibleOut]
 
 
 class ResumenInventarioOut(BaseModel):
     """El inventario completo, con el total arriba para no sumarlo a mano.
 
     Los totales son de la EMPRESA, no de la página: `lineas` puede traer 50
-    tandas y `total_disponible` contar las 300 que hay. `total_lineas` dice
-    cuántas tandas con existencias hay en total, para que el frontend sepa si
-    se está quedando corto.
+    filas y `total_disponible` contar las 300 unidades que hay. `total_lineas`
+    dice cuántas combinaciones de prenda y color con existencias hay en total,
+    para que el frontend sepa si se está quedando corto.
     """
 
     total_disponible: int

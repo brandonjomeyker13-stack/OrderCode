@@ -138,8 +138,8 @@ def test_lo_confirmado_aparece_como_disponible(
 
     assert resumen.total_disponible == 50
     assert len(resumen.lineas) == 1
-    assert resumen.lineas[0].lote_id == lote.id
     assert resumen.lineas[0].producto == "Producto de Prueba"
+    assert [tanda.lote_id for tanda in resumen.lineas[0].tandas] == [lote.id]
 
 
 def test_un_conteo_sin_confirmar_no_es_inventario(
@@ -345,7 +345,9 @@ def test_dos_colores_del_mismo_producto_son_dos_filas_que_se_venden_aparte(
 
     assert lineas["Negro"].cantidad_disponible == 30
     assert lineas["Blanco"].cantidad_disponible == 20
-    assert lineas["Negro"].corte == tendido.etiqueta, "hay que saber de qué corte salió"
+    assert [tanda.lote_id for tanda in lineas["Negro"].tandas] == [por_color["Negro"]], (
+        "la fila trae la tanda de la que hay que descontar"
+    )
 
     venta = servicio.registrar(
         empresa.id,
@@ -357,6 +359,61 @@ def test_dos_colores_del_mismo_producto_son_dos_filas_que_se_venden_aparte(
     despues = {linea.color: linea for linea in servicio.resumen(empresa.id).lineas}
     assert despues["Negro"].cantidad_disponible == 20
     assert despues["Blanco"].cantidad_disponible == 20, "el otro color no se movió"
+
+
+def test_el_mismo_color_en_dos_cortes_es_una_sola_fila(
+    db: Session, empresa: Empresa, taller: Taller, bodega, corte
+):
+    """Para vender, las negras son las negras: no importa de qué tendido
+    salieron. Y la fila trae sus dos tandas, la vieja primero, porque la
+    salida sí tiene que descontar de un lote concreto.
+
+    El `limit=1` es media prueba: con la página por tanda, pedir una fila
+    mostraba 30 negras cuando había 50, y las otras 20 quedaban en la página
+    siguiente como si fueran otra cosa.
+    """
+    negro = ColorService(db).crear(empresa.id, ColorCreate(nombre="Negro"))
+    qr = QRCode(empresa_id=empresa.id, token="token-dos-cortes")
+    db.add(qr)
+    db.flush()
+    tipo = TipoProducto(
+        empresa_id=empresa.id, nombre="Buzo", referencia="BUZ-01", qr_code_id=qr.id
+    )
+    db.add(tipo)
+    db.commit()
+
+    lotes = []
+    for fecha, cantidad in ((SALIDA, 30), (SALIDA + timedelta(days=3), 20)):
+        tendido = CorteService(db).crear(
+            empresa.id,
+            CorteCreate(
+                fecha=fecha,
+                lineas=[
+                    LineaCorteCreate(
+                        tipo_producto_id=tipo.id, color_id=negro.id, cantidad=cantidad
+                    )
+                ],
+            ),
+        )
+        lotes.append(tendido.lineas[0].lote_id)
+        envio = AsignacionTallerService(db).crear(
+            empresa.id,
+            AsignacionTallerCreate(
+                lote_id=lotes[-1],
+                taller_id=taller.id,
+                cantidad_asignada=cantidad,
+                fecha_asignacion=fecha,
+            ),
+        )
+        _recibir(db, empresa, envio, bodega, corte, buenas=cantidad)
+
+    resumen = InventarioService(db).resumen(empresa.id, offset=0, limit=1)
+
+    assert resumen.total_lineas == 1, "un producto y un color son una sola fila"
+    linea = resumen.lineas[0]
+    assert linea.cantidad_disponible == 50, "las dos tandas suman en la misma fila"
+    assert [tanda.lote_id for tanda in linea.tandas] == lotes, "la más vieja primero"
+    assert [tanda.cantidad_disponible for tanda in linea.tandas] == [30, 20]
 
 
 # --- Paginación: la página no puede cambiar los totales ---
@@ -410,7 +467,7 @@ def test_los_totales_son_de_la_empresa_y_no_de_la_pagina(
     pagina = InventarioService(db).resumen(empresa.id, offset=0, limit=2)
 
     assert len(pagina.lineas) == 2, "la página debe respetar el límite"
-    assert pagina.total_lineas == 5, "hay cinco tandas con existencias"
+    assert pagina.total_lineas == 5, "hay cinco combinaciones de prenda y color"
     assert pagina.total_disponible == 50, "el total es de la empresa, no de la página"
 
 
@@ -432,7 +489,9 @@ def test_los_lotes_agotados_no_gastan_espacio_en_la_pagina(
 
     pagina = servicio.resumen(empresa.id, offset=0, limit=2)
 
-    assert [linea.lote_id for linea in pagina.lineas] == [con_stock.id]
+    assert [
+        tanda.lote_id for linea in pagina.lineas for tanda in linea.tandas
+    ] == [con_stock.id]
     assert pagina.total_disponible == 7
     assert pagina.total_vendido == 30, "lo vendido es el histórico completo"
 

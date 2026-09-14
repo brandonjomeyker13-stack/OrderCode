@@ -5,8 +5,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.asignacion_taller import AsignacionTaller
+from app.models.color import Color
 from app.models.devolucion import Devolucion
 from app.models.lote import Lote
+from app.models.tipo_producto import TipoProducto
 from app.models.venta import Venta
 from app.repositories.base import BaseRepository
 
@@ -121,27 +123,92 @@ class VentaRepository(BaseRepository[Venta]):
         )
         return origen, listo, salido
 
-    def lotes_con_disponible(
-        self, empresa_id: int, offset: int = 0, limit: int = 50
-    ) -> list[tuple[Lote, int, int]]:
-        origen, _, _ = self._inventario_base(empresa_id)
-        stmt = (
-            origen.options(
-                selectinload(Lote.tipo_producto),
-                selectinload(Lote.color),
-                selectinload(Lote.corte),
+    def _grupos_base(self, empresa_id: int):
+        """Prenda + color, con las cifras de sus tandas ya sumadas.
+
+        Agrupar aquí y no en el frontend es lo que hace que la paginación
+        signifique algo: si la página fuera de tandas, un color repartido en
+        varias podía quedar partido entre dos páginas y aparecer con menos de
+        lo que hay. La página es de lo que se vende, que es prenda + color.
+
+        El filtro de existencias sigue siendo POR TANDA, igual que antes: una
+        tanda agotada no es inventario, es historia, y no debe sumar ni a lo
+        listo ni a lo vendido de la fila.
+        """
+        devuelto = self._devuelto_por_lote_sub(empresa_id)
+        vendido = self._vendido_por_lote_sub(empresa_id)
+        listo = func.coalesce(devuelto.c.total, 0)
+        salido = func.coalesce(vendido.c.total, 0)
+        tandas = (
+            select(
+                Lote.tipo_producto_id.label("tipo_producto_id"),
+                Lote.color_id.label("color_id"),
+                listo.label("listo"),
+                salido.label("salido"),
             )
-            .order_by(Lote.id.desc())
+            .outerjoin(devuelto, devuelto.c.lote_id == Lote.id)
+            .outerjoin(vendido, vendido.c.lote_id == Lote.id)
+            .where(Lote.empresa_id == empresa_id, listo - salido > 0)
+            .subquery()
+        )
+        return select(
+            tandas.c.tipo_producto_id,
+            tandas.c.color_id,
+            func.coalesce(func.sum(tandas.c.listo), 0).label("listo"),
+            func.coalesce(func.sum(tandas.c.salido), 0).label("salido"),
+        ).group_by(tandas.c.tipo_producto_id, tandas.c.color_id)
+
+    def grupos_con_disponible(
+        self, empresa_id: int, offset: int = 0, limit: int = 50
+    ) -> list[tuple[TipoProducto, Color | None, int, int]]:
+        grupos = self._grupos_base(empresa_id).subquery()
+        stmt = (
+            select(TipoProducto, Color, grupos.c.listo, grupos.c.salido)
+            .join(TipoProducto, TipoProducto.id == grupos.c.tipo_producto_id)
+            .outerjoin(Color, Color.id == grupos.c.color_id)
+            # Por nombre y no por id: la lista se lee buscando "Legging" y
+            # luego "Negro". `is_(None)` deja los sin color al final sin
+            # depender de NULLS LAST, que no todos los motores ordenan igual.
+            # Los ids son el desempate, para que la página 2 no repita ni
+            # se salte filas cuando dos productos se llaman igual.
+            .order_by(
+                TipoProducto.nombre,
+                Color.nombre.is_(None),
+                Color.nombre,
+                grupos.c.tipo_producto_id,
+                grupos.c.color_id,
+            )
             .offset(offset)
             .limit(limit)
         )
-        return [(fila[0], fila[1], fila[2]) for fila in self.db.execute(stmt).all()]
+        return [(fila[0], fila[1], fila[2], fila[3]) for fila in self.db.execute(stmt).all()]
 
-    def contar_lotes_con_disponible(self, empresa_id: int) -> int:
-        origen, _, _ = self._inventario_base(empresa_id)
+    def contar_grupos_con_disponible(self, empresa_id: int) -> int:
         return self.db.execute(
-            select(func.count()).select_from(origen.subquery())
+            select(func.count()).select_from(self._grupos_base(empresa_id).subquery())
         ).scalar_one()
+
+    def tandas_con_disponible(
+        self, empresa_id: int, tipo_producto_ids: list[int]
+    ) -> list[tuple[Lote, int, int]]:
+        """Las tandas con existencias de esos productos, la más vieja primero.
+
+        Van con la fila de inventario porque una salida se descuenta de UN
+        lote: "20 negras" hay que traducirlo a lotes concretos, y quien vende
+        no tiene por qué saber cuáles son.
+
+        Se filtra por producto y no por producto+color para no armar un IN de
+        tuplas con NULLs, que cada motor trata a su manera. Puede traer algún
+        color que no esté en la página; el service se queda con los que
+        necesita.
+        """
+        if not tipo_producto_ids:
+            return []
+        origen, _, _ = self._inventario_base(empresa_id)
+        stmt = origen.where(Lote.tipo_producto_id.in_(tipo_producto_ids)).order_by(
+            Lote.fecha_registro, Lote.id
+        )
+        return [(fila[0], fila[1], fila[2]) for fila in self.db.execute(stmt).all()]
 
     def total_disponible(self, empresa_id: int) -> int:
         """Lo disponible de TODA la empresa, no el de la página que se pidió."""

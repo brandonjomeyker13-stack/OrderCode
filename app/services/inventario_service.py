@@ -14,6 +14,7 @@ from app.repositories.venta_repository import VentaRepository
 from app.schemas.inventario import (
     LineaInventarioOut,
     ResumenInventarioOut,
+    TandaDisponibleOut,
     VentaCreate,
     VentaOut,
     VentaUpdate,
@@ -36,36 +37,48 @@ class InventarioService:
     def resumen(self, empresa_id: int, offset: int = 0, limit: int = 100) -> ResumenInventarioOut:
         """El inventario: lo que volvió bien y confirmado, menos lo vendido.
 
-        Se listan solo las tandas que tienen algo disponible. Un lote agotado
-        no es inventario, es historia -- y la historia se mira en la lista de
-        salidas, no aquí.
+        Una fila por prenda y color, que es como se vende. Se listan solo las
+        que tienen algo disponible: una tanda agotada no es inventario, es
+        historia -- y la historia se mira en la lista de salidas, no aquí.
 
-        El filtro y los totales los hace la base: la página trae solo lotes
-        con existencias, y los totales son de la empresa entera. Si se
-        calcularan sobre la página, pedir la segunda daría un inventario
-        distinto al de la primera.
+        El agrupado, el filtro y los totales los hace la base. Los totales son
+        de la empresa entera: si se calcularan sobre la página, pedir la
+        segunda daría un inventario distinto al de la primera. Y el agrupado
+        va allá y no en el frontend porque agrupar solo lo que cupo en la
+        página deja filas con menos unidades de las que hay.
         """
+        grupos = self.repo.grupos_con_disponible(empresa_id, offset=offset, limit=limit)
+        por_grupo: dict[tuple[int, int | None], list[TandaDisponibleOut]] = {}
+        for lote, listo, salido in self.repo.tandas_con_disponible(
+            empresa_id, [tipo.id for tipo, _color, _listo, _salido in grupos]
+        ):
+            por_grupo.setdefault((lote.tipo_producto_id, lote.color_id), []).append(
+                TandaDisponibleOut(
+                    lote_id=lote.id,
+                    fecha_registro=lote.fecha_registro,
+                    cantidad_disponible=listo - salido,
+                )
+            )
+
         lineas = [
             LineaInventarioOut(
-                lote_id=lote.id,
-                producto=lote.tipo_producto.nombre,
-                referencia=lote.tipo_producto.referencia,
-                color=lote.color.nombre if lote.color else None,
-                corte=etiqueta_de(lote.corte) if lote.corte else None,
-                fecha_registro=lote.fecha_registro,
+                tipo_producto_id=tipo.id,
+                producto=tipo.nombre,
+                referencia=tipo.referencia,
+                color=color.nombre if color else None,
+                color_hex=color.hex if color else None,
                 cantidad_lista=listo,
                 cantidad_vendida=salido,
                 cantidad_disponible=listo - salido,
+                tandas=por_grupo.get((tipo.id, color.id if color else None), []),
             )
-            for lote, listo, salido in self.repo.lotes_con_disponible(
-                empresa_id, offset=offset, limit=limit
-            )
+            for tipo, color, listo, salido in grupos
         ]
 
         return ResumenInventarioOut(
             total_disponible=self.repo.total_disponible(empresa_id),
             total_vendido=self.repo.total_vendido(empresa_id),
-            total_lineas=self.repo.contar_lotes_con_disponible(empresa_id),
+            total_lineas=self.repo.contar_grupos_con_disponible(empresa_id),
             lineas=lineas,
         )
 
