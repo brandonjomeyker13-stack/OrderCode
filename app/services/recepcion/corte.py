@@ -48,7 +48,12 @@ class ConfirmacionCorteService:
         conteos = self.repo.listar_por_estado(
             empresa_id, EstadoConteo.REPORTADO, offset=offset, limit=limit
         )
-        return [self._armar(c, empresa_id) for c in conteos]
+        # De una vez para toda la lista: si no, cada tarjeta dispara su propia
+        # consulta para saber si su envío llegó por partes.
+        por_envio = self.repo.resumen_sin_confirmar(
+            [c.asignacion_id for c in conteos], empresa_id
+        )
+        return [self._armar(c, empresa_id, por_envio) for c in conteos]
 
     def contar_por_confirmar(self, empresa_id: int) -> int:
         return self.repo.contar_por_estado(empresa_id, EstadoConteo.REPORTADO)
@@ -171,13 +176,24 @@ class ConfirmacionCorteService:
             raise NotFoundError("No encontramos ese conteo")
         return conteo
 
-    def _armar(self, conteo: ConteoRecepcion, empresa_id: int) -> ConteoPorConfirmarOut:
+    def _armar(
+        self,
+        conteo: ConteoRecepcion,
+        empresa_id: int,
+        por_envio: dict[int, tuple[int, int]] | None = None,
+    ) -> ConteoPorConfirmarOut:
         asignacion = conteo.asignacion
         merma = self.incidencia_repo.calcular_cantidad_afectada(asignacion.id, empresa_id)
         pendiente = max(
             asignacion.cantidad_asignada - (asignacion.cantidad_devuelta or 0) - merma, 0
         )
         contado = conteo.cantidad_buena + conteo.cantidad_danada
+
+        # El envío entero: cuántas tandas suyas esperan y cuánto suman. Se
+        # acepta precalculado para que la lista no consulte una vez por fila.
+        if por_envio is None:
+            por_envio = self.repo.resumen_sin_confirmar([conteo.asignacion_id], empresa_id)
+        en_espera, contado_en_espera = por_envio.get(conteo.asignacion_id, (0, 0))
 
         # Si el conteo ya está confirmado, su propio efecto ya está descontado
         # del pendiente: compararlo contra el pendiente de AHORA daría una
@@ -201,6 +217,11 @@ class ConfirmacionCorteService:
             cantidad_asignada=asignacion.cantidad_asignada,
             cantidad_pendiente=referencia,
             diferencia=contado - referencia,
+            conteos_sin_confirmar=en_espera,
+            contado_sin_confirmar=contado_en_espera,
+            # Contra el pendiente de AHORA: ninguna de las tandas en espera se
+            # ha descontado todavía, así que todas se comparan contra el mismo.
+            diferencia_del_envio=contado_en_espera - pendiente,
             contado_por=self._nombre(conteo.contado_por_id, empresa_id),
             confirmado_por=self._nombre(conteo.confirmado_por_id, empresa_id),
             confirmado_at=conteo.confirmado_at,

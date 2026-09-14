@@ -141,10 +141,26 @@ class ConteoPorConfirmarOut(TimestampSchema):
     #: Lo que corte mandó al taller y lo que todavía no ha vuelto.
     cantidad_asignada: int
     cantidad_pendiente: int
-    #: contado - pendiente. Negativo = faltó, positivo = llegó de más, cero =
-    #: cuadra. Se manda con signo porque "faltan 3" y "sobran 3" son dos
-    #: conversaciones distintas con el taller.
+    #: contado - pendiente, de ESTE reporte solo. Negativo = faltó, positivo =
+    #: llegó de más, cero = cuadra. Se manda con signo porque "faltan 3" y
+    #: "sobran 3" son dos conversaciones distintas con el taller.
+    #:
+    #: Cuando el envío llegó en varias tandas, la cifra que se discute es la
+    #: del envío (los tres campos de abajo), no esta: hasta que corte no
+    #: confirma no se descuenta nada, así que cada tanda suelta se compara
+    #: contra el mismo pendiente y las dos parecen incompletas.
     diferencia: int
+
+    # --- El envío entero, que es lo que corte decide ---
+
+    #: Cuántos reportes de este mismo envío esperan confirmación, incluido
+    #: este. Uno = el taller trajo todo junto. Más de uno = lo trajo por
+    #: partes y bodega anotó cada llegada.
+    conteos_sin_confirmar: int
+    #: Unidades sumadas de todos esos reportes.
+    contado_sin_confirmar: int
+    #: contado_sin_confirmar - cantidad_pendiente. Es el descuadre de verdad.
+    diferencia_del_envio: int
 
     #: Quién contó. Con una sola cuenta por puesto hoy es siempre la misma
     #: persona, pero la pregunta "¿quién anotó esto?" se hace igual, y sin la

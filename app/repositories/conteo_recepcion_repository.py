@@ -117,6 +117,38 @@ class ConteoRecepcionRepository(BaseRepository[ConteoRecepcion]):
         )
         return {fila[0]: fila[1] for fila in self.db.execute(stmt).all()}
 
+    def resumen_sin_confirmar(
+        self, asignacion_ids: list[int], empresa_id: int
+    ) -> dict[int, tuple[int, int]]:
+        """Por envío: cuántos reportes esperan confirmación y cuánto suman.
+
+        Un taller puede traer el envío en varias tandas, y bodega anota una por
+        una. Mirando cada reporte por separado, los dos parecen incompletos:
+        cada uno se compara contra el mismo pendiente, porque hasta que corte
+        no confirma no se descuenta nada. Juntos son la entrega de verdad, y
+        esa es la cifra que hay que poner al lado de lo que se mandó.
+
+        En UNA consulta: la lista por confirmar los pide todos a la vez.
+        """
+        if not asignacion_ids:
+            return {}
+        stmt = (
+            select(
+                ConteoRecepcion.asignacion_id,
+                func.count(),
+                func.coalesce(
+                    func.sum(ConteoRecepcion.cantidad_buena + ConteoRecepcion.cantidad_danada), 0
+                ),
+            )
+            .where(
+                ConteoRecepcion.asignacion_id.in_(asignacion_ids),
+                ConteoRecepcion.empresa_id == empresa_id,
+                ConteoRecepcion.estado == EstadoConteo.REPORTADO,
+            )
+            .group_by(ConteoRecepcion.asignacion_id)
+        )
+        return {fila[0]: (fila[1], fila[2]) for fila in self.db.execute(stmt).all()}
+
     def sumar_confirmado(self, asignacion_id: int, empresa_id: int) -> int:
         """Unidades ya confirmadas para una asignación (buenas + dañadas).
 

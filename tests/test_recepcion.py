@@ -362,6 +362,58 @@ def test_dos_tandas_del_mismo_taller_se_acumulan(
     assert fresca.estado == EstadoAsignacion.ENTREGADO_COMPLETO
 
 
+def test_las_tandas_sin_confirmar_se_leen_como_un_solo_envio(
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario
+):
+    """El taller trajo las 50 en dos viajes y ninguno está confirmado todavía.
+
+    Mirado reporte por reporte, cada uno parece incompleto: como hasta la
+    confirmación no se descuenta nada, los dos se comparan contra el mismo
+    pendiente y los dos dicen "faltan". Sumados son la entrega completa, y esa
+    es la cifra que corte tiene que ver antes de decidir.
+    """
+    _contar(db, empresa, asignacion, bodega, buenas=30)
+    _contar(db, empresa, asignacion, bodega, buenas=20)
+
+    lista = ConfirmacionCorteService(db).listar_por_confirmar(empresa.id)
+
+    assert [c.diferencia for c in lista] == [-20, -30], "cada tanda suelta parece corta"
+    for c in lista:
+        assert c.conteos_sin_confirmar == 2
+        assert c.contado_sin_confirmar == 50
+        assert c.diferencia_del_envio == 0, "juntas sí cuadran con lo que se mandó"
+
+
+def test_una_sola_tanda_se_lee_igual_que_antes(
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario
+):
+    """El caso normal no cambia: una entrega, una tarjeta, la misma cifra."""
+    _contar(db, empresa, asignacion, bodega, buenas=45, danadas=5)
+
+    [solo] = ConfirmacionCorteService(db).listar_por_confirmar(empresa.id)
+
+    assert solo.conteos_sin_confirmar == 1
+    assert solo.contado_sin_confirmar == 50
+    assert solo.diferencia_del_envio == solo.diferencia == 0
+
+
+def test_lo_ya_confirmado_no_suma_al_envio_en_espera(
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
+):
+    """Solo cuenta lo que sigue esperando: lo confirmado ya movió el saldo y
+    volver a sumarlo haría ver un sobrante que no existe."""
+    primero = _contar(db, empresa, asignacion, bodega, buenas=30)
+    ConfirmacionCorteService(db).confirmar(primero.id, empresa.id, corte.id)
+    _contar(db, empresa, asignacion, bodega, buenas=20)
+
+    [pendiente] = ConfirmacionCorteService(db).listar_por_confirmar(empresa.id)
+
+    assert pendiente.conteos_sin_confirmar == 1
+    assert pendiente.contado_sin_confirmar == 20
+    assert pendiente.cantidad_pendiente == 20, "las 30 ya confirmadas salieron del saldo"
+    assert pendiente.diferencia_del_envio == 0
+
+
 # --- Corregirse ---
 
 
