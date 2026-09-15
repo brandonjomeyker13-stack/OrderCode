@@ -2,9 +2,12 @@
 """
 El final del recorrido: lo que ya está listo y sacarlo.
 
-LEER lo puede hacer quien ve cantidades -- ventas, corte y el dueño --, porque
-saber qué hay listo es información de producción. ESCRIBIR es solo de ventas:
-quien despacha es quien registra la salida.
+LEER lo que hay lo puede hacer quien ve cantidades -- ventas, corte y el dueño
+--, porque saber qué está listo es información de producción. ESCRIBIR es solo
+de ventas: quien despacha es quien registra la salida.
+
+La lista de salidas es la excepción: también es solo de ventas. Ahí está a
+quién se le mandó, y eso ya no es producción.
 """
 from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
@@ -15,6 +18,7 @@ from app.db.session import get_db
 from app.models.usuario import Usuario
 from app.schemas.common import PaginationParams
 from app.schemas.inventario import (
+    PanoramaOut,
     ResumenInventarioOut,
     VentaCreate,
     VentaOut,
@@ -43,6 +47,26 @@ def ver_inventario(
     )
 
 
+@router.get("/panorama", response_model=PanoramaOut)
+def ver_panorama(
+    pagination: PaginationParams = Depends(get_pagination),
+    contexto: Contexto = Depends(get_contexto),
+    _puesto: Usuario = Depends(puede_ver_cantidades),
+    db: Session = Depends(get_db),
+):
+    """Qué hay y qué viene, por prenda y color.
+
+    El inventario de arriba solo trae lo que se puede despachar. Esto trae
+    además lo que sigue en los talleres, que es lo que quien vende necesita
+    para comprometer una entrega. Va antes que `/ventas/{id}` en el archivo a
+    propósito: si estuviera después, `/panorama` entraría por la ruta con
+    parámetro y respondería un 422 pidiendo un número.
+    """
+    return InventarioService(db).panorama(
+        contexto.empresa_id, pagination.offset, pagination.page_size
+    )
+
+
 @router.post("/ventas", response_model=VentaOut, status_code=201)
 def registrar_venta(
     data: VentaCreate,
@@ -67,9 +91,16 @@ def listar_ventas(
     response: Response,
     pagination: PaginationParams = Depends(get_pagination),
     contexto: Contexto = Depends(get_contexto),
-    _puesto: Usuario = Depends(puede_ver_cantidades),
+    _puesto: Usuario = Depends(requiere_ventas),
     db: Session = Depends(get_db),
 ):
+    """A quién se le mandó y qué día: eso es de quien despacha.
+
+    Corte ve cantidades pero no esta lista. Lleva el nombre del cliente en la
+    nota, y el movimiento comercial no es parte de controlar la producción.
+    Del disponible se puede deducir que algo salió, y está bien: lo que no
+    tiene por qué ver es a quién.
+    """
     servicio = InventarioService(db)
     response.headers["X-Total-Count"] = str(servicio.repo.count(contexto.empresa_id))
     return servicio.listar_ventas(contexto.empresa_id, pagination.offset, pagination.page_size)

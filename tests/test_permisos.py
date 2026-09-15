@@ -103,12 +103,17 @@ MATRIZ = {
     ("/api/v1/notificaciones", "GET"): puede_ver_cantidades,
     ("/api/v1/notificaciones/leer-todas", "POST"): puede_ver_cantidades,
     ("/api/v1/notificaciones/{aviso_id}/leer", "POST"): puede_ver_cantidades,
-    # Saber qué hay listo es información de producción: la leen los tres que
-    # ven cantidades. Sacarlo del inventario es solo de quien despacha.
+    # Saber qué hay listo, y qué viene en camino, es información de
+    # producción: lo leen los tres que ven cantidades.
     ("/api/v1/inventario", "GET"): puede_ver_cantidades,
-    ("/api/v1/inventario/ventas", "GET"): puede_ver_cantidades,
+    ("/api/v1/inventario/panorama", "GET"): puede_ver_cantidades,
 
     # --- El final del recorrido es de VENTAS ---
+    #
+    # La LISTA de salidas también: ahí está a quién se le mandó, en la nota, y
+    # el movimiento comercial no es parte de controlar la producción. Del
+    # disponible se deduce que algo salió, y con eso basta para corte.
+    ("/api/v1/inventario/ventas", "GET"): requiere_ventas,
     ("/api/v1/inventario/ventas", "POST"): requiere_ventas,
     ("/api/v1/inventario/ventas/{venta_id}", "PATCH"): requiere_ventas,
     ("/api/v1/inventario/ventas/{venta_id}", "DELETE"): requiere_ventas,

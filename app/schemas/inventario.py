@@ -75,6 +75,50 @@ class ResumenInventarioOut(BaseModel):
     lineas: list[LineaInventarioOut]
 
 
+class LineaPanoramaOut(BaseModel):
+    """Una prenda en un color, con su recorrido completo.
+
+    El inventario responde "qué puedo despachar hoy". Esto responde "qué hay y
+    qué viene": incluye lo que sigue en los talleres, así que aquí sí aparecen
+    los colores con disponible en cero que acaban de cortarse.
+
+    Las cifras cuadran entre sí: cortada = en_proceso + perdida + disponible +
+    vendida. Si alguna vez no cuadran, el dato está mal, no la pantalla.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    tipo_producto_id: int
+    producto: str
+    referencia: str
+    color: str | None
+    color_hex: str | None
+
+    #: Lo que salió del tendido, sumando todas las tandas de ese color.
+    cantidad_cortada: int
+    #: Cortado pero todavía no confirmado de vuelta: sigue en el taller, o ni
+    #: siquiera se ha enviado. Es lo que "viene en camino".
+    cantidad_en_proceso: int
+    #: Lo dañado. No vuelve al inventario y tampoco sigue en el taller.
+    cantidad_perdida: int
+    cantidad_disponible: int
+    cantidad_vendida: int
+
+
+class PanoramaOut(BaseModel):
+    """Los totales son de la EMPRESA, no de la página, igual que el resumen.
+
+    Se dejan fuera las combinaciones ya terminadas -- cortadas, entregadas y
+    vendidas por completo --: son historia, y esta pantalla se lee para
+    decidir hoy.
+    """
+
+    total_en_proceso: int
+    total_disponible: int
+    total_lineas: int
+    lineas: list[LineaPanoramaOut]
+
+
 class VentaCreate(BaseModel):
     lote_id: int
     cantidad: int = Field(gt=0, le=MAX_UNIDADES)

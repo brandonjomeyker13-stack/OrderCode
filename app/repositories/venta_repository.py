@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.color import Color
 from app.models.devolucion import Devolucion
+from app.models.incidencia import Incidencia
 from app.models.lote import Lote
 from app.models.tipo_producto import TipoProducto
 from app.models.venta import Venta
@@ -93,7 +94,30 @@ class VentaRepository(BaseRepository[Venta]):
                 func.coalesce(func.sum(Devolucion.cantidad), 0).label("total"),
             )
             .join(Devolucion, Devolucion.asignacion_id == AsignacionTaller.id)
-            .where(AsignacionTaller.empresa_id == empresa_id)
+            # Las dos tablas llevan empresa: filtrar solo una deja la otra
+            # agregando filas de todos los tenants para responderle a uno.
+            .where(
+                AsignacionTaller.empresa_id == empresa_id,
+                Devolucion.empresa_id == empresa_id,
+            )
+            .group_by(AsignacionTaller.lote_id)
+            .subquery()
+        )
+
+    def _merma_por_lote_sub(self, empresa_id: int):
+        """Lo dañado, por lote. No vuelve al inventario y tampoco sigue en el
+        taller: sin restarlo, una prenda rota se queda 'en proceso' para
+        siempre."""
+        return (
+            select(
+                AsignacionTaller.lote_id.label("lote_id"),
+                func.coalesce(func.sum(Incidencia.cantidad_afectada), 0).label("total"),
+            )
+            .join(Incidencia, Incidencia.asignacion_id == AsignacionTaller.id)
+            .where(
+                AsignacionTaller.empresa_id == empresa_id,
+                Incidencia.empresa_id == empresa_id,
+            )
             .group_by(AsignacionTaller.lote_id)
             .subquery()
         )
@@ -217,6 +241,96 @@ class VentaRepository(BaseRepository[Venta]):
         return self.db.execute(
             select(func.coalesce(func.sum(sub.c.listo - sub.c.salido), 0))
         ).scalar_one()
+
+    # --- Panorama: el recorrido entero de cada prenda y color ---
+    #
+    # El inventario responde "qué puedo despachar". Esto responde "qué hay y
+    # qué viene", que es otra pregunta: incluye lo que sigue en el taller, y
+    # por eso no puede partir del filtro de existencias -- un color recién
+    # cortado tiene disponible cero y aun así hay que verlo.
+
+    def _panorama_base(self, empresa_id: int):
+        devuelto = self._devuelto_por_lote_sub(empresa_id)
+        perdido = self._merma_por_lote_sub(empresa_id)
+        vendido = self._vendido_por_lote_sub(empresa_id)
+        lotes = (
+            select(
+                Lote.tipo_producto_id.label("tipo_producto_id"),
+                Lote.color_id.label("color_id"),
+                Lote.cantidad_total.label("cortada"),
+                func.coalesce(devuelto.c.total, 0).label("devuelta"),
+                func.coalesce(perdido.c.total, 0).label("perdida"),
+                func.coalesce(vendido.c.total, 0).label("vendida"),
+            )
+            .outerjoin(devuelto, devuelto.c.lote_id == Lote.id)
+            .outerjoin(perdido, perdido.c.lote_id == Lote.id)
+            .outerjoin(vendido, vendido.c.lote_id == Lote.id)
+            .where(Lote.empresa_id == empresa_id)
+            .subquery()
+        )
+        cortada = func.sum(lotes.c.cortada)
+        devuelta = func.sum(lotes.c.devuelta)
+        perdida = func.sum(lotes.c.perdida)
+        vendida = func.sum(lotes.c.vendida)
+        return (
+            select(
+                lotes.c.tipo_producto_id,
+                lotes.c.color_id,
+                cortada.label("cortada"),
+                (cortada - devuelta - perdida).label("en_proceso"),
+                perdida.label("perdida"),
+                (devuelta - vendida).label("disponible"),
+                vendida.label("vendida"),
+            )
+            .group_by(lotes.c.tipo_producto_id, lotes.c.color_id)
+            # Lo que ya se cortó, se entregó y se vendió entero es historia:
+            # deja de ocupar sitio en una pantalla que se lee para decidir hoy.
+            .having((cortada - devuelta - perdida > 0) | (devuelta - vendida > 0))
+        )
+
+    def panorama(
+        self, empresa_id: int, offset: int = 0, limit: int = 50
+    ) -> list[tuple[TipoProducto, Color | None, int, int, int, int, int]]:
+        base = self._panorama_base(empresa_id).subquery()
+        stmt = (
+            select(
+                TipoProducto,
+                Color,
+                base.c.cortada,
+                base.c.en_proceso,
+                base.c.perdida,
+                base.c.disponible,
+                base.c.vendida,
+            )
+            .join(TipoProducto, TipoProducto.id == base.c.tipo_producto_id)
+            .outerjoin(Color, Color.id == base.c.color_id)
+            .order_by(
+                TipoProducto.nombre,
+                Color.nombre.is_(None),
+                Color.nombre,
+                base.c.tipo_producto_id,
+                base.c.color_id,
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+        return [tuple(fila) for fila in self.db.execute(stmt).all()]  # type: ignore[misc]
+
+    def contar_panorama(self, empresa_id: int) -> int:
+        return self.db.execute(
+            select(func.count()).select_from(self._panorama_base(empresa_id).subquery())
+        ).scalar_one()
+
+    def totales_panorama(self, empresa_id: int) -> tuple[int, int]:
+        """En proceso y disponible de la empresa entera, no de la página."""
+        base = self._panorama_base(empresa_id).subquery()
+        fila = self.db.execute(
+            select(
+                func.coalesce(func.sum(base.c.en_proceso), 0),
+                func.coalesce(func.sum(base.c.disponible), 0),
+            )
+        ).one()
+        return int(fila[0]), int(fila[1])
 
     def total_vendido(self, empresa_id: int) -> int:
         """Todo lo que ha salido, histórico completo."""

@@ -416,6 +416,123 @@ def test_el_mismo_color_en_dos_cortes_es_una_sola_fila(
     assert [tanda.cantidad_disponible for tanda in linea.tandas] == [30, 20]
 
 
+# --- El panorama: qué hay listo y qué viene en camino ---
+
+
+def _tipo(db: Session, empresa: Empresa, nombre: str, referencia: str) -> TipoProducto:
+    qr = QRCode(empresa_id=empresa.id, token=f"token-{referencia}")
+    db.add(qr)
+    db.flush()
+    tipo = TipoProducto(
+        empresa_id=empresa.id, nombre=nombre, referencia=referencia, qr_code_id=qr.id
+    )
+    db.add(tipo)
+    db.commit()
+    return tipo
+
+
+def _cortar_y_enviar(db, empresa, taller, tipo, color, cantidad, fecha=SALIDA):
+    """Un tendido de un solo color que sale entero al taller."""
+    tendido = CorteService(db).crear(
+        empresa.id,
+        CorteCreate(
+            fecha=fecha,
+            lineas=[
+                LineaCorteCreate(tipo_producto_id=tipo.id, color_id=color.id, cantidad=cantidad)
+            ],
+        ),
+    )
+    lote_id = tendido.lineas[0].lote_id
+    envio = AsignacionTallerService(db).crear(
+        empresa.id,
+        AsignacionTallerCreate(
+            lote_id=lote_id,
+            taller_id=taller.id,
+            cantidad_asignada=cantidad,
+            fecha_asignacion=fecha,
+        ),
+    )
+    return lote_id, envio
+
+
+def test_lo_que_sigue_en_el_taller_no_es_inventario_pero_si_panorama(
+    db: Session, empresa: Empresa, taller: Taller
+):
+    """La razón de que el panorama exista.
+
+    El inventario solo trae lo que se puede despachar, así que un color que
+    acaba de salir al taller no aparece en ninguna parte -- y quien vende
+    necesita saber que viene en camino para poder comprometer una entrega.
+    """
+    negro = ColorService(db).crear(empresa.id, ColorCreate(nombre="Negro"))
+    _cortar_y_enviar(db, empresa, taller, _tipo(db, empresa, "Buzo", "BUZ-P1"), negro, 40)
+    servicio = InventarioService(db)
+
+    assert servicio.resumen(empresa.id).lineas == [], "todavía no hay nada que despachar"
+
+    panorama = servicio.panorama(empresa.id)
+    assert panorama.total_en_proceso == 40
+    assert panorama.total_disponible == 0
+    assert [(l.color, l.cantidad_en_proceso, l.cantidad_disponible) for l in panorama.lineas] == [
+        ("Negro", 40, 0)
+    ]
+
+
+def test_las_cifras_del_panorama_cuadran_con_lo_cortado(
+    db: Session, empresa: Empresa, taller: Taller, bodega, corte, ventas
+):
+    """cortada = en_proceso + perdida + disponible + vendida.
+
+    Si deja de cuadrar, el panorama está mintiendo sobre dónde está la
+    mercancía, que es lo único que esta pantalla tiene que hacer bien.
+    """
+    negro = ColorService(db).crear(empresa.id, ColorCreate(nombre="Negro"))
+    lote_id, envio = _cortar_y_enviar(
+        db, empresa, taller, _tipo(db, empresa, "Buzo", "BUZ-P2"), negro, 100
+    )
+    # Llegan 60 buenas y 10 dañadas; 30 se quedaron en el taller.
+    _recibir(db, empresa, envio, bodega, corte, buenas=60, danadas=10)
+    servicio = InventarioService(db)
+    servicio.registrar(
+        empresa.id, VentaCreate(lote_id=lote_id, cantidad=25, fecha=VENTA), usuario_id=ventas.id
+    )
+
+    linea = servicio.panorama(empresa.id).lineas[0]
+
+    assert linea.cantidad_cortada == 100
+    assert linea.cantidad_en_proceso == 30, "lo que el taller no ha devuelto"
+    assert linea.cantidad_perdida == 10, "lo dañado no vuelve ni sigue en el taller"
+    assert linea.cantidad_disponible == 35
+    assert linea.cantidad_vendida == 25
+    assert linea.cantidad_cortada == (
+        linea.cantidad_en_proceso
+        + linea.cantidad_perdida
+        + linea.cantidad_disponible
+        + linea.cantidad_vendida
+    )
+
+
+def test_lo_cortado_entregado_y_vendido_entero_sale_del_panorama(
+    db: Session, empresa: Empresa, taller: Taller, bodega, corte, ventas
+):
+    """Se lee para decidir hoy: una tanda que ya se vendió completa es
+    historia y solo ocuparía sitio."""
+    negro = ColorService(db).crear(empresa.id, ColorCreate(nombre="Negro"))
+    agotado, envio = _cortar_y_enviar(
+        db, empresa, taller, _tipo(db, empresa, "Buzo", "BUZ-P3"), negro, 20
+    )
+    _recibir(db, empresa, envio, bodega, corte, buenas=20)
+    servicio = InventarioService(db)
+    servicio.registrar(
+        empresa.id, VentaCreate(lote_id=agotado, cantidad=20, fecha=VENTA), usuario_id=ventas.id
+    )
+
+    panorama = servicio.panorama(empresa.id)
+
+    assert panorama.lineas == []
+    assert panorama.total_lineas == 0
+
+
 # --- Paginación: la página no puede cambiar los totales ---
 
 

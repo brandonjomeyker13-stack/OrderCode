@@ -13,6 +13,8 @@ from app.repositories.usuario_repository import UsuarioRepository
 from app.repositories.venta_repository import VentaRepository
 from app.schemas.inventario import (
     LineaInventarioOut,
+    LineaPanoramaOut,
+    PanoramaOut,
     ResumenInventarioOut,
     TandaDisponibleOut,
     VentaCreate,
@@ -79,6 +81,40 @@ class InventarioService:
             total_disponible=self.repo.total_disponible(empresa_id),
             total_vendido=self.repo.total_vendido(empresa_id),
             total_lineas=self.repo.contar_grupos_con_disponible(empresa_id),
+            lineas=lineas,
+        )
+
+    def panorama(self, empresa_id: int, offset: int = 0, limit: int = 100) -> PanoramaOut:
+        """Qué hay y qué viene, por prenda y color.
+
+        No es el inventario con otro nombre: aquí sí están los colores que
+        siguen en el taller, que en el inventario no aparecen porque no se
+        pueden despachar. Quien vende necesita las dos cosas para contestar
+        "¿y si te mando 50 la otra semana?".
+        """
+        en_proceso, disponible = self.repo.totales_panorama(empresa_id)
+        lineas = [
+            LineaPanoramaOut(
+                tipo_producto_id=tipo.id,
+                producto=tipo.nombre,
+                referencia=tipo.referencia,
+                color=color.nombre if color else None,
+                color_hex=color.hex if color else None,
+                cantidad_cortada=cortada,
+                cantidad_en_proceso=proceso,
+                cantidad_perdida=perdida,
+                cantidad_disponible=libre,
+                cantidad_vendida=vendida,
+            )
+            for tipo, color, cortada, proceso, perdida, libre, vendida in self.repo.panorama(
+                empresa_id, offset=offset, limit=limit
+            )
+        ]
+
+        return PanoramaOut(
+            total_en_proceso=en_proceso,
+            total_disponible=disponible,
+            total_lineas=self.repo.contar_panorama(empresa_id),
             lineas=lineas,
         )
 
