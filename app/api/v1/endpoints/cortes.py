@@ -130,9 +130,9 @@ def actualizar_corte(
     corte_id: int,
     data: CorteUpdate,
     contexto: Contexto = Depends(get_contexto),
-    _admin: Usuario = Depends(require_admin),
+    _puesto: Usuario = Depends(requiere_corte),
     db: Session = Depends(get_db),
 ):
-    """Corrige la cabecera. Las líneas no se tocan por aquí: cada una es un
-    lote con su propio historial de asignaciones y devoluciones."""
+    """Corrige un error de captura. Se puede rearmar el tendido mientras
+    ninguna línea haya salido a taller; si ya salió, el service lo rechaza."""
     return CorteService(db).actualizar(corte_id, contexto.empresa_id, data)

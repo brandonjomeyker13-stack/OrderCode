@@ -22,6 +22,7 @@ from app.schemas.asignacion_taller import AsignacionTallerCreate
 from app.schemas.corte import (
     ColorDeCorteCreate,
     CorteCreate,
+    CorteUpdate,
     LineaCorteCreate,
     PrendaDeCorteCreate,
 )
@@ -468,3 +469,87 @@ def test_el_panorama_se_filtra_por_taller(
 
     solo_a = InventarioService(db).panorama(empresa.id, taller_id=taller.id)
     assert {l.color for l in solo_a.lineas} == {"Negro"}
+
+
+# --- Corregir el tendido ---
+
+
+def test_se_puede_corregir_el_tendido_antes_de_asignar(
+    db: Session, empresa: Empresa, leguins: TipoProducto
+):
+    corte = _tendido(db, empresa, leguins)
+    assert corte.se_puede_editar
+
+    corregido = CorteService(db).actualizar(
+        corte.id,
+        empresa.id,
+        CorteUpdate(
+            capas=40,
+            colores=[ColorDeCorteCreate(nombre="Rojo", capas=40)],
+            prendas=[PrendaDeCorteCreate(tipo_producto_id=leguins.id, proporciones=3)],
+        ),
+    )
+
+    assert corregido.numero == corte.numero
+    assert corregido.capas == 40
+    assert [(c.nombre, c.capas) for c in corregido.colores] == [("Rojo", 40)]
+    assert len(corregido.lineas) == 1
+    assert corregido.lineas[0].color == "Rojo"
+    assert corregido.lineas[0].cantidad == 120
+    assert corregido.cantidad_desglosada == 120
+    assert corregido.se_puede_editar
+
+
+def test_no_se_rearma_si_ya_salio_a_taller(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller
+):
+    corte = _tendido(db, empresa, leguins)
+    AsignacionTallerService(db).crear(
+        empresa.id,
+        AsignacionTallerCreate(
+            lote_id=_linea(corte, "Negro").lote_id,
+            taller_id=taller.id,
+            proporciones=1,
+            fecha_asignacion=HOY,
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="ya salió a un taller"):
+        CorteService(db).actualizar(
+            corte.id,
+            empresa.id,
+            CorteUpdate(
+                capas=40,
+                colores=[ColorDeCorteCreate(nombre="Rojo", capas=40)],
+                prendas=[PrendaDeCorteCreate(tipo_producto_id=leguins.id, proporciones=3)],
+            ),
+        )
+
+    actual = CorteService(db).obtener(corte.id, empresa.id)
+    assert not actual.se_puede_editar
+    assert len(actual.lineas) == 2
+    assert {l.color for l in actual.lineas} == {"Negro", "Blanco"}
+
+
+def test_el_flujo_viejo_no_se_rearma_por_capas(
+    db: Session, empresa: Empresa, leguins: TipoProducto
+):
+    corte = CorteService(db).crear(
+        empresa.id,
+        CorteCreate(
+            fecha=HOY,
+            lineas=[LineaCorteCreate(tipo_producto_id=leguins.id, cantidad=80)],
+        ),
+    )
+    assert not corte.se_puede_editar
+
+    with pytest.raises(ValidationError, match="flujo anterior"):
+        CorteService(db).actualizar(
+            corte.id,
+            empresa.id,
+            CorteUpdate(
+                capas=40,
+                colores=[ColorDeCorteCreate(nombre="Rojo", capas=40)],
+                prendas=[PrendaDeCorteCreate(tipo_producto_id=leguins.id, proporciones=2)],
+            ),
+        )

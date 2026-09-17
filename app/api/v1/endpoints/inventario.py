@@ -2,18 +2,18 @@
 """
 El final del recorrido: lo que ya está listo y sacarlo.
 
-LEER lo que hay lo puede hacer quien ve cantidades -- ventas, corte y el dueño
---, porque saber qué está listo es información de producción. ESCRIBIR es solo
-de ventas: quien despacha es quien registra la salida.
+LEER y ESCRIBIR el stock es de VENTAS (y del dueño). Corte controla lo que
+está en los talleres, no cuánto quedó listo para despachar. Bodega cuenta a
+ciegas, así que tampoco ve estas cifras.
 
-La lista de salidas es la excepción: también es solo de ventas. Ahí está a
-quién se le mandó, y eso ya no es producción.
+La lista de salidas también es solo de ventas: ahí está a quién se le mandó,
+y eso ya no es producción.
 """
 from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import Contexto, get_contexto, get_pagination
-from app.core.deps import puede_ver_cantidades, requiere_ventas
+from app.core.deps import requiere_ventas
 from app.db.session import get_db
 from app.models.usuario import Usuario
 from app.schemas.common import PaginationParams
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/inventario", tags=["inventario"])
 def ver_inventario(
     pagination: PaginationParams = Depends(get_pagination),
     contexto: Contexto = Depends(get_contexto),
-    _puesto: Usuario = Depends(puede_ver_cantidades),
+    _puesto: Usuario = Depends(requiere_ventas),
     db: Session = Depends(get_db),
 ):
     """Lo que volvió bien de los talleres, ya confirmado, menos lo vendido.
@@ -52,7 +52,7 @@ def ver_panorama(
     pagination: PaginationParams = Depends(get_pagination),
     taller_id: int | None = Query(default=None, description="Solo lo que pasó por este taller"),
     contexto: Contexto = Depends(get_contexto),
-    _puesto: Usuario = Depends(puede_ver_cantidades),
+    _puesto: Usuario = Depends(requiere_ventas),
     db: Session = Depends(get_db),
 ):
     """Qué hay y qué viene, por prenda y color.

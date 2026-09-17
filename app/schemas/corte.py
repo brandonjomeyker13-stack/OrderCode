@@ -171,11 +171,40 @@ class CorteCreate(BaseModel):
 
 
 class CorteUpdate(BaseModel):
-    """Corrección de la cabecera. Las líneas no se tocan por aquí: cada una es
-    un lote con su propio historial de asignaciones y devoluciones."""
+    """Corregir un error de captura.
+
+    Se puede rearmar el tendido (capas, colores, prendas) mientras ninguna
+    línea haya salido a taller. Si ya salió, el service lo rechaza: esa
+    historia no se reescribe.
+    """
 
     fecha: date | None = None
     cantidad_declarada: int | None = Field(default=None, gt=0, le=MAX_UNIDADES)
+    capas: int | None = Field(default=None, gt=0, le=MAX_UNIDADES)
+    colores: list[ColorDeCorteCreate] | None = Field(default=None, max_length=MAX_LINEAS)
+    prendas: list[PrendaDeCorteCreate] | None = Field(default=None, max_length=MAX_LINEAS)
+
+    @property
+    def rearma_el_tendido(self) -> bool:
+        return self.prendas is not None or self.colores is not None
+
+    @model_validator(mode="after")
+    def _forma_si_rearma(self) -> "CorteUpdate":
+        if not self.rearma_el_tendido:
+            if self.capas is not None:
+                raise ValueError("Para cambiar las capas también indica los colores y las prendas")
+            return self
+        if self.capas is None or not self.colores or not self.prendas:
+            raise ValueError("Para corregir el tendido indica las capas, los colores y las prendas")
+        if sum(color.capas for color in self.colores) != self.capas:
+            raise ValueError("Las capas de los colores tienen que sumar las capas del corte")
+        nombres = [color.nombre.casefold() for color in self.colores]
+        if len(set(nombres)) != len(nombres):
+            raise ValueError("Hay dos colores iguales. Súmalos en uno solo.")
+        tipos = [prenda.tipo_producto_id for prenda in self.prendas]
+        if len(set(tipos)) != len(tipos):
+            raise ValueError("Hay dos líneas del mismo producto. Súmalas en una sola prenda.")
+        return self
 
 
 class CorteOut(TimestampSchema):
@@ -199,3 +228,5 @@ class CorteOut(TimestampSchema):
     capas: int | None = None
     colores: list[ColorDeCorteOut] = []
     lineas: list[LineaCorteOut]
+    #: False cuando ya salió a taller o es un corte del flujo viejo.
+    se_puede_editar: bool = False

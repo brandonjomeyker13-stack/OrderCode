@@ -57,6 +57,8 @@ class CorteRepository(BaseRepository[Corte]):
             selectinload(Corte.lineas).options(
                 selectinload(Lote.tipo_producto),
                 selectinload(Lote.color),
+                selectinload(Lote.asignaciones),
+                selectinload(Lote.ventas),
             ),
         )
 
@@ -169,13 +171,24 @@ class CorteService:
 
     def actualizar(self, id: int, empresa_id: int, data: CorteUpdate) -> CorteOut:
         corte = self._buscar(id, empresa_id)
-        cambios = data.model_dump(exclude_unset=True)
-        if not cambios:
-            return self._armar(corte)
 
-        for campo, valor in cambios.items():
-            setattr(corte, campo, valor)
-        self.db.commit()
+        if data.rearma_el_tendido:
+            self._rearmar(empresa_id, corte, data)
+        else:
+            if data.fecha is not None:
+                corte.fecha = data.fecha
+                for linea in corte.lineas:
+                    linea.fecha_registro = data.fecha
+            if data.cantidad_declarada is not None:
+                corte.cantidad_declarada = data.cantidad_declarada
+
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            raise ConflictError(
+                "Ya existe un corte con ese número en esa fecha. Revisa el ciclo de numeración."
+            )
         return self.obtener(corte.id, empresa_id)
 
     # --- Internos ---
@@ -225,6 +238,48 @@ class CorteService:
             f"Ya registraste los {empresa.corte_numero_max} números del ciclo en esta fecha. "
             "Usa otra fecha o amplía el ciclo de la empresa."
         )
+
+    def _rearmar(self, empresa_id: int, corte: Corte, data: CorteUpdate) -> None:
+        """Vuelve a armar el tendido. Solo si ninguna línea ha salido a taller.
+
+        Borrar las líneas y los colores y crearlos de nuevo es más seguro que
+        intentar parchear cada fila: la cantidad de una línea nueva es
+        capas × proporciones, y un ajuste a medias dejaría historia a medias.
+        """
+        if corte.capas is None:
+            raise ValidationError(
+                "Este corte es del flujo anterior. No se rearma por capas."
+            )
+        self._asegurar_que_sigue_virgen(corte)
+
+        tendido = CorteCreate(
+            fecha=data.fecha or corte.fecha,
+            capas=data.capas,
+            colores=data.colores or [],
+            prendas=data.prendas or [],
+        )
+        tipos = self._validar_tipos(empresa_id, tendido)
+
+        for linea in list(corte.lineas):
+            self.db.delete(linea)
+        corte.colores.clear()
+        self.db.flush()
+
+        corte.capas = tendido.capas
+        corte.fecha = tendido.fecha
+        corte.cantidad_declarada = None
+        self._escribir_por_capas(empresa_id, corte, tendido, tipos)
+
+    def _asegurar_que_sigue_virgen(self, corte: Corte) -> None:
+        for linea in corte.lineas:
+            if (
+                linea.estado != EstadoLote.PENDIENTE_ASIGNACION
+                or linea.asignaciones
+                or linea.ventas
+            ):
+                raise ValidationError(
+                    "Este corte ya salió a un taller. Ya no se puede rearmar el tendido."
+                )
 
     def _escribir_por_capas(
         self, empresa_id: int, corte: Corte, data: CorteCreate, tipos: dict
@@ -341,6 +396,18 @@ class CorteService:
                 )
                 for linea in corte.lineas
             ],
+            se_puede_editar=self._se_puede_editar(corte),
             created_at=corte.created_at,
             updated_at=corte.updated_at,
+        )
+
+    @staticmethod
+    def _se_puede_editar(corte: Corte) -> bool:
+        if corte.capas is None or not corte.lineas:
+            return False
+        return all(
+            linea.estado == EstadoLote.PENDIENTE_ASIGNACION
+            and not linea.asignaciones
+            and not linea.ventas
+            for linea in corte.lineas
         )

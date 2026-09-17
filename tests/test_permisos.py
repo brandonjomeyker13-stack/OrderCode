@@ -104,10 +104,11 @@ MATRIZ = {
     ("/api/v1/notificaciones", "GET"): puede_ver_cantidades,
     ("/api/v1/notificaciones/leer-todas", "POST"): puede_ver_cantidades,
     ("/api/v1/notificaciones/{aviso_id}/leer", "POST"): puede_ver_cantidades,
-    # Saber qué hay listo, y qué viene en camino, es información de
-    # producción: lo leen los tres que ven cantidades.
-    ("/api/v1/inventario", "GET"): puede_ver_cantidades,
-    ("/api/v1/inventario/panorama", "GET"): puede_ver_cantidades,
+    # El cuaderno de stock (contado vs listo para despachar) es de VENTAS.
+    # Corte controla lo que está en talleres; no despacha y no necesita ver
+    # cuánto quedó listo. Bodega cuenta a ciegas, así que tampoco.
+    ("/api/v1/inventario", "GET"): requiere_ventas,
+    ("/api/v1/inventario/panorama", "GET"): requiere_ventas,
 
     # --- El final del recorrido es de VENTAS ---
     #
@@ -119,6 +120,10 @@ MATRIZ = {
     ("/api/v1/inventario/ventas/{venta_id}", "PATCH"): requiere_ventas,
     ("/api/v1/inventario/ventas/{venta_id}", "DELETE"): requiere_ventas,
 
+    # Corregir el tendido es de CORTE: Miriam se equivoca en las capas y lo
+    # arregla antes de mandarlo. El service bloquea el rearme si ya salió a
+    # taller; el admin sigue pudiendo porque requiere_corte lo incluye.
+    ("/api/v1/cortes/{corte_id}", "PATCH"): requiere_corte,
     # --- Corregir lo ya capturado es del admin ---
     #
     # La regla venía de cuando el sistema manejaba plata; ese motivo murió con
@@ -126,7 +131,6 @@ MATRIZ = {
     # rediseño: quien captura no corrige su propia captura. Si CORTE pudiera
     # editar la cantidad de un lote después de asignarlo, ajustaría la cifra
     # contra la que se mide a BODEGA y el conteo a dos manos quedaría en nada.
-    ("/api/v1/cortes/{corte_id}", "PATCH"): require_admin,
     ("/api/v1/colores/{color_id}", "PATCH"): require_admin,
     ("/api/v1/colores/{color_id}", "DELETE"): require_admin,
     ("/api/v1/lotes/{lote_id}", "PATCH"): require_admin,
