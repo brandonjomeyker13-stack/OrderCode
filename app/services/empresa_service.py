@@ -11,6 +11,7 @@ from app.models.asignacion_taller import AsignacionTaller
 from app.models.conteo_recepcion import ConteoRecepcion
 from app.models.color import Color
 from app.models.corte import Corte
+from app.models.corte_color import CorteColor
 from app.models.venta import Venta
 from app.models.devolucion import Devolucion
 from app.models.empresa import Empresa
@@ -48,6 +49,7 @@ class EmpresaService:
             nombre=empresa.nombre,
             activo=empresa.activo,
             dias_alerta_atraso=empresa.dias_alerta_atraso,
+            quincena_dias=empresa.quincena_dias,
             eliminacion_solicitada_at=empresa.eliminacion_solicitada_at,
             usuario_propietario_id=empresa.usuario_propietario_id,
             created_at=empresa.created_at,
@@ -59,7 +61,7 @@ class EmpresaService:
     # Whitelist explícita en vez de un setattr ciego sobre el schema: `activo`
     # es el interruptor de pago (ver EmpresaUpdate) y no debe volverse
     # escribible por API solo porque alguien agregue el campo al schema.
-    _CAMPOS_EDITABLES = {"nombre", "dias_alerta_atraso"}
+    _CAMPOS_EDITABLES = {"nombre", "dias_alerta_atraso", "quincena_dias"}
 
     def actualizar(self, empresa_id: int, data: EmpresaUpdate) -> Empresa:
         empresa = self.repo.get_by_id(empresa_id)
@@ -130,6 +132,8 @@ class EmpresaService:
         # Antes que Lote: cuelga de el.
         Venta,
         Lote,
+        # Antes que Corte: cuelga de él.
+        CorteColor,
         # Despues de Lote: las lineas le apuntan con RESTRICT, asi que el
         # orden importa o Postgres rechaza el borrado.
         Corte,

@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.asignacion_taller import AsignacionTaller
+from app.models.color import Color, normalizar
 from app.models.enums import EstadoAsignacion
 from app.models.lote import Lote
 from app.repositories.base import BaseRepository
@@ -56,6 +57,10 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
             return stmt
         if filtros.taller_id is not None:
             stmt = stmt.where(AsignacionTaller.taller_id == filtros.taller_id)
+        if filtros.corte_id is not None:
+            stmt = stmt.join(Lote, Lote.id == AsignacionTaller.lote_id).where(
+                Lote.corte_id == filtros.corte_id
+            )
         if filtros.lote_id is not None:
             stmt = stmt.where(AsignacionTaller.lote_id == filtros.lote_id)
         if filtros.estado is not None:
@@ -166,3 +171,45 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
             .order_by(AsignacionTaller.fecha_asignacion.desc())
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def buscar_pendiente_por_pieza(
+        self,
+        empresa_id: int,
+        taller_id: int,
+        tipo_producto_id: int,
+        color: str,
+        corte_id: int | None = None,
+    ) -> AsignacionTaller | None:
+        """El envío más viejo de ese taller que todavía no cierra, de esa
+        prenda y color. Si hay dos proporciones al mismo taller, entra la
+        primera que sigue pendiente."""
+        clave = normalizar(color)
+        stmt = (
+            select(AsignacionTaller)
+            .join(Lote, Lote.id == AsignacionTaller.lote_id)
+            .outerjoin(Color, Color.id == Lote.color_id)
+            .options(
+                selectinload(AsignacionTaller.taller),
+                selectinload(AsignacionTaller.lote).options(
+                    selectinload(Lote.tipo_producto),
+                    selectinload(Lote.color),
+                    selectinload(Lote.corte),
+                ),
+            )
+            .where(
+                AsignacionTaller.empresa_id == empresa_id,
+                AsignacionTaller.taller_id == taller_id,
+                AsignacionTaller.estado.in_(
+                    [EstadoAsignacion.ASIGNADO, EstadoAsignacion.ENTREGADO_PARCIAL]
+                ),
+                Lote.tipo_producto_id == tipo_producto_id,
+                or_(
+                    Lote.color_nombre_normalizado == clave,
+                    Color.nombre_normalizado == clave,
+                ),
+            )
+            .order_by(AsignacionTaller.fecha_asignacion.asc(), AsignacionTaller.id.asc())
+        )
+        if corte_id is not None:
+            stmt = stmt.where(Lote.corte_id == corte_id)
+        return self.db.execute(stmt).scalars().first()

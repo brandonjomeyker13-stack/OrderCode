@@ -71,8 +71,9 @@ MATRIZ = {
     # Las tres publican cantidad_asignada (IncidenciaOut anida la asignación
     # entera), y el listado además acepta filtrar por lote: sumando se
     # reconstruye el corte completo.
-    ("/api/v1/asignaciones", "GET"): requiere_corte,
-    ("/api/v1/asignaciones/{asignacion_id}", "GET"): requiere_corte,
+    ("/api/v1/asignaciones", "GET"): puede_ver_cantidades,
+    ("/api/v1/asignaciones/{asignacion_id}", "GET"): puede_ver_cantidades,
+    ("/api/v1/asignaciones/{asignacion_id}/ficha.pdf", "GET"): requiere_corte,
     # Corte compara lo que mandó contra lo que bodega contó, y confirma.
     ("/api/v1/recepcion/por-confirmar", "GET"): requiere_corte,
     ("/api/v1/recepcion/conteos/{conteo_id}/comparacion", "GET"): requiere_corte,

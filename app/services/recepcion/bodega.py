@@ -12,6 +12,7 @@ from app.models.conteo_recepcion import ConteoRecepcion
 from app.models.enums import EstadoAsignacion, EstadoConteo
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.conteo_recepcion_repository import ConteoRecepcionRepository
+from app.repositories.lote_repository import LoteRepository
 from app.schemas.recepcion import (
     ConteoBodegaOut,
     ConteoCreate,
@@ -20,6 +21,7 @@ from app.schemas.recepcion import (
 )
 from app.schemas.taller import TallerOut
 from app.services.corte_service import etiqueta_de
+from app.services.recepcion.cierre import aplicar_confirmacion, proporcion_completa
 
 #: Identifica la operación ante el registro de Idempotency-Key. Es un
 #: identificador opaco, no una URL: si la ruta cambia, este literal NO debe
@@ -27,7 +29,7 @@ from app.services.corte_service import etiqueta_de
 RUTA_CONTEO = "POST /recepcion/conteos"
 
 def _color_de(lote) -> str | None:
-    return lote.color.nombre if lote.color else None
+    return lote.nombre_color
 
 
 def _corte_de(lote) -> str | None:
@@ -59,6 +61,8 @@ def construir_conteo_bodega(conteo: ConteoRecepcion) -> ConteoBodegaOut:
         corte=_corte_de(asignacion.lote),
         cantidad_buena=conteo.cantidad_buena,
         cantidad_danada=conteo.cantidad_danada,
+        cantidad_danada_materia=conteo.cantidad_danada_materia,
+        cantidad_arreglo=conteo.cantidad_arreglo,
         fecha=conteo.fecha,
         nota=conteo.nota,
         estado=conteo.estado,
@@ -73,6 +77,7 @@ class RecepcionBodegaService:
         self.db = db
         self.repo = ConteoRecepcionRepository(db)
         self.asignacion_repo = AsignacionTallerRepository(db)
+        self.lote_repo = LoteRepository(db)
 
     # --- Lectura ---
 
@@ -140,9 +145,7 @@ class RecepcionBodegaService:
         if recurso_id is not None:
             return self.obtener(recurso_id, empresa_id)
 
-        asignacion = self.asignacion_repo.get_by_id(data.asignacion_id, empresa_id)
-        if asignacion is None:
-            raise NotFoundError("No encontramos ese envío a taller")
+        asignacion = self._resolver_envio(empresa_id, data)
 
         # El envío ya cerrado no admite conteos. No es una cifra: es el mismo
         # estado por el que ese envío desapareció de la lista de pendientes, y
@@ -167,6 +170,8 @@ class RecepcionBodegaService:
             asignacion_id=asignacion.id,
             cantidad_buena=data.cantidad_buena,
             cantidad_danada=data.cantidad_danada,
+            cantidad_danada_materia=data.cantidad_danada_materia,
+            cantidad_arreglo=data.cantidad_arreglo,
             fecha=data.fecha,
             nota=data.nota,
             estado=EstadoConteo.REPORTADO,
@@ -174,6 +179,8 @@ class RecepcionBodegaService:
         )
         self.db.add(conteo)
         self.db.flush()
+
+        self._cerrar_si_proporcion_completa(asignacion, empresa_id, usuario_id)
 
         reclamar_clave(
             self.db, empresa_id, idempotency_key, RUTA_CONTEO, "conteo_recepcion", conteo.id
@@ -208,7 +215,7 @@ class RecepcionBodegaService:
             for campo, valor in cambios.items():
                 setattr(conteo, campo, valor)
 
-            if conteo.cantidad_buena + conteo.cantidad_danada == 0:
+            if conteo.cantidad_buena + conteo.cantidad_danada + conteo.cantidad_danada_materia + conteo.cantidad_arreglo == 0:
                 raise ValidationError(
                     "El conteo quedaría en cero. Si no llegó nada, borra el reporte."
                 )
@@ -217,6 +224,9 @@ class RecepcionBodegaService:
                     f"La fecha ({conteo.fecha}) es anterior al día en que el corte salió "
                     f"al taller ({conteo.asignacion.fecha_asignacion}). Revisa el día."
                 )
+            self._cerrar_si_proporcion_completa(
+                conteo.asignacion, empresa_id, conteo.contado_por_id or 0
+            )
             self.db.commit()
             return self.obtener(conteo.id, empresa_id)
 
@@ -237,6 +247,46 @@ class RecepcionBodegaService:
         self.db.commit()
 
     # --- Internos ---
+
+    def _resolver_envio(self, empresa_id: int, data: ConteoCreate):
+        if data.asignacion_id is not None:
+            asignacion = self.asignacion_repo.get_by_id(data.asignacion_id, empresa_id)
+            if asignacion is None:
+                raise NotFoundError("No encontramos ese envío a taller")
+            return asignacion
+        asignacion = self.asignacion_repo.buscar_pendiente_por_pieza(
+            empresa_id,
+            taller_id=data.taller_id,
+            tipo_producto_id=data.tipo_producto_id,
+            color=data.color,
+            corte_id=data.corte_id,
+        )
+        if asignacion is None:
+            raise NotFoundError(
+                "No hay un envío pendiente de ese producto y color en ese taller"
+            )
+        return asignacion
+
+    def _cerrar_si_proporcion_completa(
+        self, asignacion, empresa_id: int, usuario_id: int
+    ) -> None:
+        """En el flujo nuevo, Laura cuenta y al completar la proporción se
+        cierra sola. El flujo viejo (sin capas_color) sigue pidiendo que corte
+        confirme, para no romper el front que aún está en producción."""
+        lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
+        if lote is None or not lote.es_por_proporciones:
+            return
+        conteos = self.repo.listar_de_asignacion(asignacion.id, empresa_id)
+        if not proporcion_completa(conteos, asignacion):
+            return
+        bloqueada = self.asignacion_repo.get_by_id_bloqueando(asignacion.id, empresa_id)
+        if bloqueada is None or bloqueada.estado == EstadoAsignacion.ENTREGADO_COMPLETO:
+            return
+        for conteo in conteos:
+            if conteo.estado == EstadoConteo.REPORTADO:
+                aplicar_confirmacion(
+                    self.db, conteo, bloqueada, empresa_id, usuario_id, ignorar_tope=True
+                )
 
     def _buscar(self, id: int, empresa_id: int) -> ConteoRecepcion:
         conteo = self.repo.obtener_con_contexto(id, empresa_id)

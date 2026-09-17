@@ -14,6 +14,7 @@ class FiltrosAsignacion:
     Todos opcionales: si no se manda ninguno, el listado se comporta igual
     que antes."""
     taller_id: int | None = None
+    corte_id: int | None = None
     lote_id: int | None = None
     estado: EstadoAsignacion | None = None
     desde: date | None = None

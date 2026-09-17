@@ -44,10 +44,16 @@ class ConteoRecepcion(Base, TimestampMixin):
 
     #: Unidades que llegaron en buen estado, tal como las contó bodega.
     cantidad_buena: Mapped[int] = mapped_column(Integer, nullable=False)
-    #: Unidades que llegaron dañadas. Se piden por separado porque al
-    #: confirmar siguen caminos distintos: unas descuentan saldo y las otras
-    #: se convierten en merma.
+    #: Unidades dañadas por el taller. Cuentan para cerrar la proporción y
+    #: salen como merma: no entran al inventario. El descuento de pago se
+    #: hace fuera de la aplicación.
     cantidad_danada: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Daño de materia prima: solo se anota. No cierra la proporción ni mueve
+    #: el saldo; se cuadre afuera.
+    cantidad_danada_materia: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: Unidades que vuelven al mismo taller a arreglarse. Siguen pendientes
+    #: hasta que regresen contadas como buenas o dañadas de taller.
+    cantidad_arreglo: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     #: El día en que llegó el bulto, que no siempre es el día en que se anota.
     fecha: Mapped[date] = mapped_column(Date, nullable=False, index=True)
@@ -92,5 +98,8 @@ class ConteoRecepcion(Base, TimestampMixin):
 
     @property
     def cantidad_total(self) -> int:
-        """Todo lo que bodega dice que llegó, bueno y dañado."""
+        """Todo lo que bodega dice que llegó, bueno y dañado de taller.
+
+        Materia y arreglo no entran: uno es una nota y el otro sigue pendiente.
+        """
         return self.cantidad_buena + self.cantidad_danada

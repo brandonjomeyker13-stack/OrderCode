@@ -101,6 +101,9 @@ class LineaPanoramaOut(BaseModel):
     cantidad_en_proceso: int
     #: Lo dañado. No vuelve al inventario y tampoco sigue en el taller.
     cantidad_perdida: int
+    #: Lo que bodega ya cerró como entregado (buenas). No se descuenta al
+    #: vender: es el cuaderno de liquidar talleres, no el de ventas.
+    cantidad_contada: int
     cantidad_disponible: int
     cantidad_vendida: int
 
@@ -114,6 +117,7 @@ class PanoramaOut(BaseModel):
     """
 
     total_en_proceso: int
+    total_contada: int
     total_disponible: int
     total_lineas: int
     lineas: list[LineaPanoramaOut]

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_empresa_id, get_pagination
-from app.core.deps import require_admin, requiere_corte
+from app.core.deps import puede_ver_cantidades, require_admin, requiere_corte
 from app.db.session import get_db
 from app.models.enums import EstadoAsignacion
 from app.models.usuario import Usuario
@@ -45,8 +45,9 @@ def obtener_asignacion(
     empresa_id: int = Depends(get_empresa_id),
     # Antes era de operacion, para que bodega supiera a que taller anotarle.
     # Ya no le hace falta: GET /recepcion/pendientes le da el taller sin las
-    # cantidades. Esta respuesta lleva cantidad_asignada y cantidad_pendiente.
-    _puesto: Usuario = Depends(requiere_corte),
+    # Esta respuesta lleva cantidad_asignada y cantidad_pendiente.
+    # Ventas también la lee: es lo que hay en talleres.
+    _puesto: Usuario = Depends(puede_ver_cantidades),
     db: Session = Depends(get_db),
 ):
     return AsignacionTallerService(db).obtener_con_merma(asignacion_id, empresa_id)
@@ -86,6 +87,24 @@ def reenviar_notificacion(
     return AsignacionTallerService(db).reenviar_notificacion(asignacion_id, empresa_id)
 
 
+@router.get("/{asignacion_id}/ficha.pdf")
+def descargar_ficha(
+    asignacion_id: int,
+    empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_corte),
+    db: Session = Depends(get_db),
+):
+    """La ficha técnica para imprimir. Ya no se manda por WhatsApp ni correo."""
+    contenido = AsignacionTallerService(db).ficha_pdf(asignacion_id, empresa_id)
+    return Response(
+        content=contenido,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="ficha-{asignacion_id}.pdf"'
+        },
+    )
+
+
 @router.get("/por-lote/{lote_id}", response_model=list[AsignacionTallerOut])
 def listar_por_lote(
     lote_id: int,
@@ -123,6 +142,7 @@ def registrar_devolucion(
 def listar_asignaciones(
     response: Response,
     taller_id: int | None = Query(default=None, description="Solo las de este taller"),
+    corte_id: int | None = Query(default=None, description="Solo las de este corte"),
     lote_id: int | None = Query(default=None, description="Solo las de este lote"),
     estado: EstadoAsignacion | None = Query(default=None, description="Filtra por estado"),
     desde: date | None = Query(
@@ -133,16 +153,19 @@ def listar_asignaciones(
     ),
     pagination: PaginationParams = Depends(get_pagination),
     empresa_id: int = Depends(get_empresa_id),
-    # Ver el comentario de obtener_asignacion: el listado publica lo mismo,
-    # y ademas acepta filtrar por lote, con lo que se podia reconstruir el
-    # corte entero sumando.
-    _puesto: Usuario = Depends(requiere_corte),
+    # Ventas también ve lo que hay en talleres. Bodega no: lleva cantidades.
+    _puesto: Usuario = Depends(puede_ver_cantidades),
     db: Session = Depends(get_db),
 ):
     """Todos los filtros son opcionales y se aplican en la base de datos.
     X-Total-Count refleja el total YA filtrado, no el total de la empresa."""
     filtros = FiltrosAsignacion(
-        taller_id=taller_id, lote_id=lote_id, estado=estado, desde=desde, hasta=hasta
+        taller_id=taller_id,
+        corte_id=corte_id,
+        lote_id=lote_id,
+        estado=estado,
+        desde=desde,
+        hasta=hasta,
     )
     service = AsignacionTallerService(db)
     response.headers["X-Total-Count"] = str(service.contar(empresa_id, filtros))

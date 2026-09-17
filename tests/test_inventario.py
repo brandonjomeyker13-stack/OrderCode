@@ -504,19 +504,23 @@ def test_las_cifras_del_panorama_cuadran_con_lo_cortado(
     assert linea.cantidad_perdida == 10, "lo dañado no vuelve ni sigue en el taller"
     assert linea.cantidad_disponible == 35
     assert linea.cantidad_vendida == 25
+    assert linea.cantidad_contada == 60, "bodega: las buenas, sin restar lo vendido"
     assert linea.cantidad_cortada == (
         linea.cantidad_en_proceso
         + linea.cantidad_perdida
         + linea.cantidad_disponible
         + linea.cantidad_vendida
     )
+    assert linea.cantidad_contada == linea.cantidad_disponible + linea.cantidad_vendida
 
 
-def test_lo_cortado_entregado_y_vendido_entero_sale_del_panorama(
+def test_vender_no_borra_el_cuaderno_de_bodega(
     db: Session, empresa: Empresa, taller: Taller, bodega, corte, ventas
 ):
-    """Se lee para decidir hoy: una tanda que ya se vendió completa es
-    historia y solo ocuparía sitio."""
+    """Dos libros: ventas descuenta el suyo; lo contado en bodega se queda.
+
+    Se lee para liquidar talleres, y esa liquidación no vive en la app.
+    """
     negro = ColorService(db).crear(empresa.id, ColorCreate(nombre="Negro"))
     agotado, envio = _cortar_y_enviar(
         db, empresa, taller, _tipo(db, empresa, "Buzo", "BUZ-P3"), negro, 20
@@ -529,8 +533,11 @@ def test_lo_cortado_entregado_y_vendido_entero_sale_del_panorama(
 
     panorama = servicio.panorama(empresa.id)
 
-    assert panorama.lineas == []
-    assert panorama.total_lineas == 0
+    assert panorama.total_disponible == 0
+    assert panorama.total_contada == 20
+    assert [(l.cantidad_contada, l.cantidad_disponible, l.cantidad_vendida) for l in panorama.lineas] == [
+        (20, 0, 20)
+    ]
 
 
 # --- Paginación: la página no puede cambiar los totales ---

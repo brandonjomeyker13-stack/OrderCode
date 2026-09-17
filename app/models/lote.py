@@ -1,7 +1,7 @@
 # app/models/lote.py
 from datetime import date
 
-from sqlalchemy import Date, Enum, ForeignKey, Integer
+from sqlalchemy import Date, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -35,10 +35,16 @@ class Lote(Base, TimestampMixin):
     color_id: Mapped[int | None] = mapped_column(
         ForeignKey("colores.id", ondelete="RESTRICT"), nullable=True, index=True
     )
-    #: Cuántas veces aparece la prenda en el molde. Es INFORMATIVO: la
-    #: aplicación no multiplica nada con esto, solo lo guarda y lo muestra.
-    #: Si algún día se usa para calcular, que sea una decisión escrita, no un
-    #: descuido.
+    #: Color escrito a mano en el tendido. Convive con `color_id` porque los
+    #: cortes viejos siguen apuntando al catálogo; los nuevos no lo usan.
+    color_nombre: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    color_nombre_normalizado: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    #: Capas de ESTE color en el tendido. Si está puesto, la cantidad de la
+    #: línea es capas_color × proporciones, y al taller solo se mandan
+    #: proporciones enteras.
+    capas_color: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Cuántas veces aparece la prenda en el molde. En los cortes nuevos SÍ
+    #: multiplica: unidades = capas_color × proporciones.
     proporciones: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     cantidad_total: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -65,3 +71,25 @@ class Lote(Base, TimestampMixin):
     ventas: Mapped[list["Venta"]] = relationship(
         back_populates="lote", cascade="all, delete-orphan"
     )
+
+    @property
+    def nombre_color(self) -> str | None:
+        """Como se lee el color: el texto del tendido, o el del catálogo."""
+        if self.color_nombre:
+            return self.color_nombre
+        if self.color is not None:
+            return self.color.nombre
+        return None
+
+    @property
+    def clave_color(self) -> str | None:
+        """Para agrupar 'Negro' y 'negro' en la misma fila de inventario."""
+        if self.color_nombre_normalizado:
+            return self.color_nombre_normalizado
+        if self.color is not None:
+            return self.color.nombre_normalizado
+        return None
+
+    @property
+    def es_por_proporciones(self) -> bool:
+        return self.capas_color is not None

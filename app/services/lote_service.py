@@ -42,7 +42,7 @@ class LoteService:
             tipo_producto=lote.tipo_producto,
             cantidad_asignada_total=asignado,
             cantidad_disponible=lote.cantidad_total - asignado,
-            color=lote.color.nombre if lote.color else None,
+            color=lote.nombre_color,
             corte=etiqueta_de(lote.corte) if lote.corte else None,
         )
 

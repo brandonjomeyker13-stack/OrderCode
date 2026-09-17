@@ -50,6 +50,10 @@ class Corte(Base, TimestampMixin):
     #: El día del TENDIDO, que no siempre es el día en que se captura.
     fecha: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
+    #: Capas del tendido. En los cortes nuevos es la cifra que se parte por
+    #: color; en los viejos queda NULL.
+    capas: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     #: El total que la encargada teclea ANTES de desglosar. Es un dato de
     #: control y jamás se recalcula: si el desglose no le cuadra, eso es
     #: exactamente lo que hay que poder ver. La aplicación avisa, no bloquea
@@ -69,6 +73,11 @@ class Corte(Base, TimestampMixin):
         # Sin delete-orphan: borrar un corte con líneas que ya salieron a
         # talleres sería borrar producción. Lo impide el service, no la base.
         order_by="Lote.id",
+    )
+    colores: Mapped[list["CorteColor"]] = relationship(
+        back_populates="corte",
+        cascade="all, delete-orphan",
+        order_by="CorteColor.id",
     )
 
     @property

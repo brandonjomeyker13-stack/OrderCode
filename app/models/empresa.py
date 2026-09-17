@@ -24,6 +24,10 @@ class Empresa(Base, TimestampMixin):
     # producción depende del producto: una confección puede tardar una semana
     # y un mueble un mes.
     dias_alerta_atraso: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
+    #: Días que dura la quincena por defecto al liquidar talleres. El rango
+    #: concreto lo elige bodega en cada consulta; esto solo es el tamaño
+    #: inicial. El tope de 30 es el tiempo que se guarda el cuaderno.
+    quincena_dias: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
     # Cuándo se mandó el último resumen de atrasos, para no repetirlo si el
     # script se corre varias veces en el mismo día.
     ultima_alerta_at: Mapped[datetime | None] = mapped_column(

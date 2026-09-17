@@ -12,8 +12,19 @@ from app.schemas.taller import TallerOut
 class AsignacionTallerCreate(BaseModel):
     lote_id: int
     taller_id: int
-    cantidad_asignada: int = Field(gt=0, le=MAX_UNIDADES)
+    #: Flujo viejo, o equivalente en unidades. En un lote por proporciones
+    #: tiene que ser un múltiplo de las capas de ese color.
+    cantidad_asignada: int | None = Field(default=None, gt=0, le=MAX_UNIDADES)
+    #: Cuántas proporciones enteras salen a este taller. En el flujo nuevo
+    #: es la cifra que se teclea: unidades = proporciones × capas_color.
+    proporciones: int | None = Field(default=None, gt=0, le=1000)
     fecha_asignacion: date
+
+    @model_validator(mode="after")
+    def _algo_se_asigna(self) -> "AsignacionTallerCreate":
+        if self.cantidad_asignada is None and self.proporciones is None:
+            raise ValueError("Indica las proporciones o las unidades que salen al taller")
+        return self
 
 
 class AsignacionTallerRegistrarDevolucion(BaseModel):

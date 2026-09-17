@@ -150,26 +150,25 @@ class VentaRepository(BaseRepository[Venta]):
     def _grupos_base(self, empresa_id: int):
         """Prenda + color, con las cifras de sus tandas ya sumadas.
 
-        Agrupar aquí y no en el frontend es lo que hace que la paginación
-        signifique algo: si la página fuera de tandas, un color repartido en
-        varias podía quedar partido entre dos páginas y aparecer con menos de
-        lo que hay. La página es de lo que se vende, que es prenda + color.
-
-        El filtro de existencias sigue siendo POR TANDA, igual que antes: una
-        tanda agotada no es inventario, es historia, y no debe sumar ni a lo
-        listo ni a lo vendido de la fila.
+        El color puede venir del catálogo o escrito a mano en el tendido.
+        Se agrupa por el nombre normalizado para que 'Negro' y 'negro' no
+        salgan como dos filas.
         """
         devuelto = self._devuelto_por_lote_sub(empresa_id)
         vendido = self._vendido_por_lote_sub(empresa_id)
         listo = func.coalesce(devuelto.c.total, 0)
         salido = func.coalesce(vendido.c.total, 0)
+        clave = func.coalesce(Lote.color_nombre_normalizado, Color.nombre_normalizado)
         tandas = (
             select(
                 Lote.tipo_producto_id.label("tipo_producto_id"),
-                Lote.color_id.label("color_id"),
+                clave.label("clave_color"),
+                func.coalesce(Lote.color_nombre, Color.nombre).label("nombre_color"),
+                Color.hex.label("color_hex"),
                 listo.label("listo"),
                 salido.label("salido"),
             )
+            .outerjoin(Color, Color.id == Lote.color_id)
             .outerjoin(devuelto, devuelto.c.lote_id == Lote.id)
             .outerjoin(vendido, vendido.c.lote_id == Lote.id)
             .where(Lote.empresa_id == empresa_id, listo - salido > 0)
@@ -177,35 +176,38 @@ class VentaRepository(BaseRepository[Venta]):
         )
         return select(
             tandas.c.tipo_producto_id,
-            tandas.c.color_id,
+            tandas.c.clave_color,
+            func.min(tandas.c.nombre_color).label("nombre_color"),
+            func.min(tandas.c.color_hex).label("color_hex"),
             func.coalesce(func.sum(tandas.c.listo), 0).label("listo"),
             func.coalesce(func.sum(tandas.c.salido), 0).label("salido"),
-        ).group_by(tandas.c.tipo_producto_id, tandas.c.color_id)
+        ).group_by(tandas.c.tipo_producto_id, tandas.c.clave_color)
 
     def grupos_con_disponible(
         self, empresa_id: int, offset: int = 0, limit: int = 50
-    ) -> list[tuple[TipoProducto, Color | None, int, int]]:
+    ) -> list[tuple[TipoProducto, str | None, str | None, str | None, int, int]]:
         grupos = self._grupos_base(empresa_id).subquery()
         stmt = (
-            select(TipoProducto, Color, grupos.c.listo, grupos.c.salido)
+            select(
+                TipoProducto,
+                grupos.c.clave_color,
+                grupos.c.nombre_color,
+                grupos.c.color_hex,
+                grupos.c.listo,
+                grupos.c.salido,
+            )
             .join(TipoProducto, TipoProducto.id == grupos.c.tipo_producto_id)
-            .outerjoin(Color, Color.id == grupos.c.color_id)
-            # Por nombre y no por id: la lista se lee buscando "Legging" y
-            # luego "Negro". `is_(None)` deja los sin color al final sin
-            # depender de NULLS LAST, que no todos los motores ordenan igual.
-            # Los ids son el desempate, para que la página 2 no repita ni
-            # se salte filas cuando dos productos se llaman igual.
             .order_by(
                 TipoProducto.nombre,
-                Color.nombre.is_(None),
-                Color.nombre,
+                grupos.c.nombre_color.is_(None),
+                grupos.c.nombre_color,
                 grupos.c.tipo_producto_id,
-                grupos.c.color_id,
+                grupos.c.clave_color,
             )
             .offset(offset)
             .limit(limit)
         )
-        return [(fila[0], fila[1], fila[2], fila[3]) for fila in self.db.execute(stmt).all()]
+        return [tuple(fila) for fila in self.db.execute(stmt).all()]  # type: ignore[misc]
 
     def contar_grupos_con_disponible(self, empresa_id: int) -> int:
         return self.db.execute(
@@ -249,25 +251,38 @@ class VentaRepository(BaseRepository[Venta]):
     # por eso no puede partir del filtro de existencias -- un color recién
     # cortado tiene disponible cero y aun así hay que verlo.
 
-    def _panorama_base(self, empresa_id: int):
+    def _panorama_base(self, empresa_id: int, taller_id: int | None = None):
         devuelto = self._devuelto_por_lote_sub(empresa_id)
         perdido = self._merma_por_lote_sub(empresa_id)
         vendido = self._vendido_por_lote_sub(empresa_id)
-        lotes = (
+        clave = func.coalesce(Lote.color_nombre_normalizado, Color.nombre_normalizado)
+        origen = (
             select(
                 Lote.tipo_producto_id.label("tipo_producto_id"),
-                Lote.color_id.label("color_id"),
+                clave.label("clave_color"),
+                func.coalesce(Lote.color_nombre, Color.nombre).label("nombre_color"),
+                Color.hex.label("color_hex"),
                 Lote.cantidad_total.label("cortada"),
                 func.coalesce(devuelto.c.total, 0).label("devuelta"),
                 func.coalesce(perdido.c.total, 0).label("perdida"),
                 func.coalesce(vendido.c.total, 0).label("vendida"),
             )
+            .outerjoin(Color, Color.id == Lote.color_id)
             .outerjoin(devuelto, devuelto.c.lote_id == Lote.id)
             .outerjoin(perdido, perdido.c.lote_id == Lote.id)
             .outerjoin(vendido, vendido.c.lote_id == Lote.id)
             .where(Lote.empresa_id == empresa_id)
-            .subquery()
         )
+        if taller_id is not None:
+            origen = origen.where(
+                Lote.id.in_(
+                    select(AsignacionTaller.lote_id).where(
+                        AsignacionTaller.empresa_id == empresa_id,
+                        AsignacionTaller.taller_id == taller_id,
+                    )
+                )
+            )
+        lotes = origen.subquery()
         cortada = func.sum(lotes.c.cortada)
         devuelta = func.sum(lotes.c.devuelta)
         perdida = func.sum(lotes.c.perdida)
@@ -275,62 +290,79 @@ class VentaRepository(BaseRepository[Venta]):
         return (
             select(
                 lotes.c.tipo_producto_id,
-                lotes.c.color_id,
+                lotes.c.clave_color,
+                func.min(lotes.c.nombre_color).label("nombre_color"),
+                func.min(lotes.c.color_hex).label("color_hex"),
                 cortada.label("cortada"),
                 (cortada - devuelta - perdida).label("en_proceso"),
                 perdida.label("perdida"),
+                devuelta.label("contada"),
                 (devuelta - vendida).label("disponible"),
                 vendida.label("vendida"),
             )
-            .group_by(lotes.c.tipo_producto_id, lotes.c.color_id)
-            # Lo que ya se cortó, se entregó y se vendió entero es historia:
-            # deja de ocupar sitio en una pantalla que se lee para decidir hoy.
-            .having((cortada - devuelta - perdida > 0) | (devuelta - vendida > 0))
+            .group_by(lotes.c.tipo_producto_id, lotes.c.clave_color)
+            # En proceso, o algo que vender, o algo ya contado en bodega (el
+            # cuaderno de liquidar talleres no se borra al vender).
+            .having(
+                (cortada - devuelta - perdida > 0)
+                | (devuelta - vendida > 0)
+                | (devuelta > 0)
+            )
         )
 
     def panorama(
-        self, empresa_id: int, offset: int = 0, limit: int = 50
-    ) -> list[tuple[TipoProducto, Color | None, int, int, int, int, int]]:
-        base = self._panorama_base(empresa_id).subquery()
+        self,
+        empresa_id: int,
+        offset: int = 0,
+        limit: int = 50,
+        taller_id: int | None = None,
+    ) -> list[tuple[TipoProducto, str | None, str | None, int, int, int, int, int, int]]:
+        base = self._panorama_base(empresa_id, taller_id).subquery()
         stmt = (
             select(
                 TipoProducto,
-                Color,
+                base.c.nombre_color,
+                base.c.color_hex,
                 base.c.cortada,
                 base.c.en_proceso,
                 base.c.perdida,
+                base.c.contada,
                 base.c.disponible,
                 base.c.vendida,
             )
             .join(TipoProducto, TipoProducto.id == base.c.tipo_producto_id)
-            .outerjoin(Color, Color.id == base.c.color_id)
             .order_by(
                 TipoProducto.nombre,
-                Color.nombre.is_(None),
-                Color.nombre,
+                base.c.nombre_color.is_(None),
+                base.c.nombre_color,
                 base.c.tipo_producto_id,
-                base.c.color_id,
+                base.c.clave_color,
             )
             .offset(offset)
             .limit(limit)
         )
         return [tuple(fila) for fila in self.db.execute(stmt).all()]  # type: ignore[misc]
 
-    def contar_panorama(self, empresa_id: int) -> int:
+    def contar_panorama(self, empresa_id: int, taller_id: int | None = None) -> int:
         return self.db.execute(
-            select(func.count()).select_from(self._panorama_base(empresa_id).subquery())
+            select(func.count()).select_from(
+                self._panorama_base(empresa_id, taller_id).subquery()
+            )
         ).scalar_one()
 
-    def totales_panorama(self, empresa_id: int) -> tuple[int, int]:
-        """En proceso y disponible de la empresa entera, no de la página."""
-        base = self._panorama_base(empresa_id).subquery()
+    def totales_panorama(
+        self, empresa_id: int, taller_id: int | None = None
+    ) -> tuple[int, int, int]:
+        """En proceso, contada (bodega) y disponible (ventas) de la empresa."""
+        base = self._panorama_base(empresa_id, taller_id).subquery()
         fila = self.db.execute(
             select(
                 func.coalesce(func.sum(base.c.en_proceso), 0),
+                func.coalesce(func.sum(base.c.contada), 0),
                 func.coalesce(func.sum(base.c.disponible), 0),
             )
         ).one()
-        return int(fila[0]), int(fila[1])
+        return int(fila[0]), int(fila[1]), int(fila[2])
 
     def total_vendido(self, empresa_id: int) -> int:
         """Todo lo que ha salido, histórico completo."""

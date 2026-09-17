@@ -24,23 +24,40 @@ from app.schemas.taller import TallerOut
 class ConteoCreate(BaseModel):
     """Lo que bodega anota cuando llega un bulto.
 
-    `cantidad_buena` y `cantidad_danada` se piden por separado porque al
-    confirmarse siguen caminos distintos: una descuenta saldo del taller y la
-    otra se convierte en merma. Pedirlo después sería pedirle a bodega que
-    recuerde algo que ya tenía delante.
+    Puede ir al envío concreto (`asignacion_id`) o decir taller + producto +
+    color (y el corte, si lo sabe). No se valida contra lo enviado: el
+    sistema existe para el caso en que las cifras no coincidan.
     """
 
-    asignacion_id: int
-    cantidad_buena: int = Field(ge=0, le=MAX_UNIDADES)
+    asignacion_id: int | None = None
+    taller_id: int | None = None
+    corte_id: int | None = None
+    tipo_producto_id: int | None = None
+    color: str | None = Field(default=None, max_length=60)
+    cantidad_buena: int = Field(default=0, ge=0, le=MAX_UNIDADES)
+    #: Daño del taller: cuenta para cerrar la proporción, no entra a inventario.
     cantidad_danada: int = Field(default=0, ge=0, le=MAX_UNIDADES)
+    #: Daño de materia prima: solo se anota.
+    cantidad_danada_materia: int = Field(default=0, ge=0, le=MAX_UNIDADES)
+    #: Vuelve al mismo taller a arreglarse; sigue pendiente.
+    cantidad_arreglo: int = Field(default=0, ge=0, le=MAX_UNIDADES)
     fecha: date
     nota: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
     def _algo_tiene_que_haber_llegado(self) -> "ConteoCreate":
-        # Único límite del reporte, y no es una comparación contra lo enviado:
-        # un conteo de cero y cero no es un conteo, es un formulario vacío.
-        if self.cantidad_buena + self.cantidad_danada == 0:
+        if self.asignacion_id is None:
+            if self.taller_id is None or self.tipo_producto_id is None or not self.color:
+                raise ValueError(
+                    "Indica el envío, o el taller, el producto y el color"
+                )
+        llegado = (
+            self.cantidad_buena
+            + self.cantidad_danada
+            + self.cantidad_danada_materia
+            + self.cantidad_arreglo
+        )
+        if llegado == 0:
             raise ValueError(
                 "Anota al menos una unidad. Si el taller no trajo nada, no registres nada."
             )
@@ -56,6 +73,8 @@ class ConteoUpdate(BaseModel):
 
     cantidad_buena: int | None = Field(default=None, ge=0, le=MAX_UNIDADES)
     cantidad_danada: int | None = Field(default=None, ge=0, le=MAX_UNIDADES)
+    cantidad_danada_materia: int | None = Field(default=None, ge=0, le=MAX_UNIDADES)
+    cantidad_arreglo: int | None = Field(default=None, ge=0, le=MAX_UNIDADES)
     fecha: date | None = None
     nota: str | None = Field(default=None, max_length=1000)
 
@@ -106,6 +125,8 @@ class ConteoBodegaOut(TimestampSchema):
     corte: str | None
     cantidad_buena: int
     cantidad_danada: int
+    cantidad_danada_materia: int = 0
+    cantidad_arreglo: int = 0
     fecha: date
     nota: str | None
     estado: EstadoConteo
@@ -134,6 +155,8 @@ class ConteoPorConfirmarOut(TimestampSchema):
 
     cantidad_buena: int
     cantidad_danada: int
+    cantidad_danada_materia: int = 0
+    cantidad_arreglo: int = 0
     fecha: date
     nota: str | None
     estado: EstadoConteo

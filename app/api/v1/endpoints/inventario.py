@@ -9,7 +9,7 @@ de ventas: quien despacha es quien registra la salida.
 La lista de salidas es la excepción: también es solo de ventas. Ahí está a
 quién se le mandó, y eso ya no es producción.
 """
-from fastapi import APIRouter, Depends, Header, Response
+from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import Contexto, get_contexto, get_pagination
@@ -50,6 +50,7 @@ def ver_inventario(
 @router.get("/panorama", response_model=PanoramaOut)
 def ver_panorama(
     pagination: PaginationParams = Depends(get_pagination),
+    taller_id: int | None = Query(default=None, description="Solo lo que pasó por este taller"),
     contexto: Contexto = Depends(get_contexto),
     _puesto: Usuario = Depends(puede_ver_cantidades),
     db: Session = Depends(get_db),
@@ -61,9 +62,14 @@ def ver_panorama(
     para comprometer una entrega. Va antes que `/ventas/{id}` en el archivo a
     propósito: si estuviera después, `/panorama` entraría por la ruta con
     parámetro y respondería un 422 pidiendo un número.
+
+    `cantidad_contada` es el cuaderno de bodega: vender no lo baja.
     """
     return InventarioService(db).panorama(
-        contexto.empresa_id, pagination.offset, pagination.page_size
+        contexto.empresa_id,
+        pagination.offset,
+        pagination.page_size,
+        taller_id=taller_id,
     )
 
 

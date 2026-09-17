@@ -12,6 +12,7 @@ from app.models.tipo_producto import TipoProducto
 from app.models.taller import Taller
 from app.models.color import Color
 from app.models.corte import Corte
+from app.models.corte_color import CorteColor
 from app.models.lote import Lote
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.incidencia import Incidencia
@@ -42,6 +43,7 @@ __all__ = [
     "Venta",
     "Color",
     "Corte",
+    "CorteColor",
     "RefreshToken",
     "IdempotencyKey",
     "PasswordResetToken",

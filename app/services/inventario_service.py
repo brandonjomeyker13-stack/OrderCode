@@ -50,11 +50,11 @@ class InventarioService:
         página deja filas con menos unidades de las que hay.
         """
         grupos = self.repo.grupos_con_disponible(empresa_id, offset=offset, limit=limit)
-        por_grupo: dict[tuple[int, int | None], list[TandaDisponibleOut]] = {}
+        por_grupo: dict[tuple[int, str | None], list[TandaDisponibleOut]] = {}
         for lote, listo, salido in self.repo.tandas_con_disponible(
-            empresa_id, [tipo.id for tipo, _color, _listo, _salido in grupos]
+            empresa_id, [tipo.id for tipo, _clave, _nombre, _hex, _listo, _salido in grupos]
         ):
-            por_grupo.setdefault((lote.tipo_producto_id, lote.color_id), []).append(
+            por_grupo.setdefault((lote.tipo_producto_id, lote.clave_color), []).append(
                 TandaDisponibleOut(
                     lote_id=lote.id,
                     fecha_registro=lote.fecha_registro,
@@ -67,14 +67,14 @@ class InventarioService:
                 tipo_producto_id=tipo.id,
                 producto=tipo.nombre,
                 referencia=tipo.referencia,
-                color=color.nombre if color else None,
-                color_hex=color.hex if color else None,
+                color=nombre,
+                color_hex=hex_,
                 cantidad_lista=listo,
                 cantidad_vendida=salido,
                 cantidad_disponible=listo - salido,
-                tandas=por_grupo.get((tipo.id, color.id if color else None), []),
+                tandas=por_grupo.get((tipo.id, clave), []),
             )
-            for tipo, color, listo, salido in grupos
+            for tipo, clave, nombre, hex_, listo, salido in grupos
         ]
 
         return ResumenInventarioOut(
@@ -84,37 +84,59 @@ class InventarioService:
             lineas=lineas,
         )
 
-    def panorama(self, empresa_id: int, offset: int = 0, limit: int = 100) -> PanoramaOut:
+    def panorama(
+        self,
+        empresa_id: int,
+        offset: int = 0,
+        limit: int = 100,
+        taller_id: int | None = None,
+    ) -> PanoramaOut:
         """Qué hay y qué viene, por prenda y color.
 
         No es el inventario con otro nombre: aquí sí están los colores que
         siguen en el taller, que en el inventario no aparecen porque no se
         pueden despachar. Quien vende necesita las dos cosas para contestar
         "¿y si te mando 50 la otra semana?".
+
+        `cantidad_contada` es el cuaderno de bodega: no se descuenta al vender.
         """
-        en_proceso, disponible = self.repo.totales_panorama(empresa_id)
+        en_proceso, contada, disponible = self.repo.totales_panorama(
+            empresa_id, taller_id=taller_id
+        )
         lineas = [
             LineaPanoramaOut(
                 tipo_producto_id=tipo.id,
                 producto=tipo.nombre,
                 referencia=tipo.referencia,
-                color=color.nombre if color else None,
-                color_hex=color.hex if color else None,
+                color=nombre,
+                color_hex=hex_,
                 cantidad_cortada=cortada,
                 cantidad_en_proceso=proceso,
                 cantidad_perdida=perdida,
+                cantidad_contada=contada_linea,
                 cantidad_disponible=libre,
                 cantidad_vendida=vendida,
             )
-            for tipo, color, cortada, proceso, perdida, libre, vendida in self.repo.panorama(
-                empresa_id, offset=offset, limit=limit
+            for (
+                tipo,
+                nombre,
+                hex_,
+                cortada,
+                proceso,
+                perdida,
+                contada_linea,
+                libre,
+                vendida,
+            ) in self.repo.panorama(
+                empresa_id, offset=offset, limit=limit, taller_id=taller_id
             )
         ]
 
         return PanoramaOut(
             total_en_proceso=en_proceso,
+            total_contada=contada,
             total_disponible=disponible,
-            total_lineas=self.repo.contar_panorama(empresa_id),
+            total_lineas=self.repo.contar_panorama(empresa_id, taller_id=taller_id),
             lineas=lineas,
         )
 
@@ -236,7 +258,7 @@ class InventarioService:
             lote_id=venta.lote_id,
             producto=venta.lote.tipo_producto.nombre,
             referencia=venta.lote.tipo_producto.referencia,
-            color=venta.lote.color.nombre if venta.lote.color else None,
+            color=venta.lote.nombre_color,
             corte=etiqueta_de(venta.lote.corte) if venta.lote.corte else None,
             cantidad=venta.cantidad,
             fecha=venta.fecha,

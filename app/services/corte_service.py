@@ -8,13 +8,16 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
+from app.models.color import normalizar
 from app.models.corte import Corte
+from app.models.corte_color import CorteColor
 from app.models.empresa import Empresa
 from app.models.enums import EstadoLote
 from app.models.lote import Lote
 from app.repositories.base import BaseRepository
 from app.repositories.tipo_producto_repository import TipoProductoRepository
 from app.schemas.corte import (
+    ColorDeCorteOut,
     CorteCreate,
     CorteOut,
     CorteUpdate,
@@ -49,16 +52,19 @@ class CorteRepository(BaseRepository[Corte]):
         super().__init__(Corte, db)
 
     def _completo(self):
-        return selectinload(Corte.lineas).options(
-            selectinload(Lote.tipo_producto),
-            selectinload(Lote.color),
+        return (
+            selectinload(Corte.colores),
+            selectinload(Corte.lineas).options(
+                selectinload(Lote.tipo_producto),
+                selectinload(Lote.color),
+            ),
         )
 
     def obtener(self, id: int, empresa_id: int) -> Corte | None:
         stmt = (
             select(Corte)
             .where(Corte.id == id, Corte.empresa_id == empresa_id)
-            .options(self._completo())
+            .options(*self._completo())
         )
         return self.db.execute(stmt).scalar_one_or_none()
 
@@ -66,7 +72,7 @@ class CorteRepository(BaseRepository[Corte]):
         stmt = (
             select(Corte)
             .where(Corte.empresa_id == empresa_id)
-            .options(self._completo())
+            .options(*self._completo())
             # Lo último primero: el corte de hoy es el que se busca.
             .order_by(Corte.fecha.desc(), Corte.id.desc())
             .offset(offset)
@@ -110,30 +116,34 @@ class CorteService:
             return self.obtener(recurso_id, empresa_id)
 
         tipos = self._validar_tipos(empresa_id, data)
-        colores = self._validar_colores(empresa_id, data)
 
         corte = Corte(
             empresa_id=empresa_id,
             numero=self._siguiente_numero(empresa_id, data.fecha),
             fecha=data.fecha,
             cantidad_declarada=data.cantidad_declarada,
+            capas=data.capas if data.es_por_capas else None,
         )
         self.db.add(corte)
         self.db.flush()
 
-        for linea in data.lineas:
-            self.db.add(
-                Lote(
-                    empresa_id=empresa_id,
-                    corte_id=corte.id,
-                    tipo_producto_id=linea.tipo_producto_id,
-                    color_id=linea.color_id,
-                    proporciones=linea.proporciones,
-                    cantidad_total=linea.cantidad,
-                    fecha_registro=data.fecha,
-                    estado=EstadoLote.PENDIENTE_ASIGNACION,
+        if data.es_por_capas:
+            self._escribir_por_capas(empresa_id, corte, data, tipos)
+        else:
+            self._validar_colores(empresa_id, data)
+            for linea in data.lineas:
+                self.db.add(
+                    Lote(
+                        empresa_id=empresa_id,
+                        corte_id=corte.id,
+                        tipo_producto_id=linea.tipo_producto_id,
+                        color_id=linea.color_id,
+                        proporciones=linea.proporciones,
+                        cantidad_total=linea.cantidad,
+                        fecha_registro=data.fecha,
+                        estado=EstadoLote.PENDIENTE_ASIGNACION,
+                    )
                 )
-            )
 
         reclamar_clave(self.db, empresa_id, idempotency_key, RUTA_CREAR, "corte", corte.id)
         try:
@@ -152,9 +162,9 @@ class CorteService:
                 "Ya existe un corte con ese número en esa fecha. Revisa el ciclo de numeración."
             )
 
-        # Los tipos y colores ya validados quedan en memoria para que armar la
+        # Los tipos ya validados quedan en memoria para que armar la
         # respuesta no dispare otra consulta por línea.
-        del tipos, colores
+        del tipos
         return self.obtener(corte.id, empresa_id)
 
     def actualizar(self, id: int, empresa_id: int, data: CorteUpdate) -> CorteOut:
@@ -216,17 +226,62 @@ class CorteService:
             "Usa otra fecha o amplía el ciclo de la empresa."
         )
 
+    def _escribir_por_capas(
+        self, empresa_id: int, corte: Corte, data: CorteCreate, tipos: dict
+    ) -> None:
+        """Capas × colores × prendas: cada combinación es una línea.
+
+        50 capas, 20 negro + 30 blanco, 2 proporciones de leguins → 40 negro
+        y 60 blanco. Eso es el corte, no una cifra que alguien teclee.
+        """
+        for color in data.colores:
+            self.db.add(
+                CorteColor(
+                    empresa_id=empresa_id,
+                    corte_id=corte.id,
+                    nombre=color.nombre,
+                    nombre_normalizado=normalizar(color.nombre),
+                    capas=color.capas,
+                )
+            )
+        for prenda in data.prendas:
+            for color in data.colores:
+                self.db.add(
+                    Lote(
+                        empresa_id=empresa_id,
+                        corte_id=corte.id,
+                        tipo_producto_id=prenda.tipo_producto_id,
+                        color_id=None,
+                        color_nombre=color.nombre,
+                        color_nombre_normalizado=normalizar(color.nombre),
+                        capas_color=color.capas,
+                        proporciones=prenda.proporciones,
+                        cantidad_total=color.capas * prenda.proporciones,
+                        fecha_registro=data.fecha,
+                        estado=EstadoLote.PENDIENTE_ASIGNACION,
+                    )
+                )
+        if corte.cantidad_declarada is None:
+            corte.cantidad_declarada = sum(
+                color.capas * prenda.proporciones
+                for prenda in data.prendas
+                for color in data.colores
+            )
+
     def _validar_tipos(self, empresa_id: int, data: CorteCreate) -> dict:
         """Una consulta para todos los tipos, no una por línea."""
+        ids = (
+            [prenda.tipo_producto_id for prenda in data.prendas]
+            if data.es_por_capas
+            else [linea.tipo_producto_id for linea in data.lineas]
+        )
         tipos = {}
-        for linea in data.lineas:
-            if linea.tipo_producto_id in tipos:
+        for tipo_id in ids:
+            if tipo_id in tipos:
                 continue
-            tipo = self.tipo_repo.get_by_id(linea.tipo_producto_id, empresa_id)
+            tipo = self.tipo_repo.get_by_id(tipo_id, empresa_id)
             if tipo is None:
-                raise NotFoundError(
-                    f"No encontramos el tipo de producto {linea.tipo_producto_id}"
-                )
+                raise NotFoundError(f"No encontramos el tipo de producto {tipo_id}")
             tipos[tipo.id] = tipo
         return tipos
 
@@ -266,16 +321,22 @@ class CorteService:
                 else None
             ),
             cerrado_at=corte.cerrado_at,
+            capas=corte.capas,
+            colores=[
+                ColorDeCorteOut(nombre=color.nombre, capas=color.capas)
+                for color in corte.colores
+            ],
             lineas=[
                 LineaCorteOut(
                     lote_id=linea.id,
                     tipo_producto_id=linea.tipo_producto_id,
                     producto=linea.tipo_producto.nombre,
                     referencia=linea.tipo_producto.referencia,
-                    color=linea.color.nombre if linea.color else None,
+                    color=linea.nombre_color,
                     color_hex=linea.color.hex if linea.color else None,
                     cantidad=linea.cantidad_total,
                     proporciones=linea.proporciones,
+                    capas_color=linea.capas_color,
                     estado=linea.estado.value,
                 )
                 for linea in corte.lineas

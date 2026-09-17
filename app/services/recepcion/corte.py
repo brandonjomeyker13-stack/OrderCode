@@ -2,29 +2,21 @@
 """Lo que hace quien confirma: comparar contra lo que mandó, y aceptar."""
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
-
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
 from app.models.conteo_recepcion import ConteoRecepcion
-from app.models.devolucion import Devolucion
-from app.models.enums import EstadoConteo, EstadoLote, TipoIncidencia
-from app.models.incidencia import Incidencia
+from app.models.enums import EstadoConteo
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.conteo_recepcion_repository import ConteoRecepcionRepository
 from app.repositories.incidencia_repository import IncidenciaRepository
-from app.repositories.lote_repository import LoteRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.recepcion import ConteoPorConfirmarOut
 from app.schemas.taller import TallerOut
 from app.services.corte_service import etiqueta_de
-from app.services.asignacion_taller_service import (
-    AsignacionTallerService,
-    recalcular_estado_asignacion,
-)
+from app.services.recepcion.cierre import aplicar_confirmacion
 
 #: Identificador opaco de la operación ante Idempotency-Key. No es una URL:
 #: si la ruta cambia, este literal NO cambia.
@@ -37,7 +29,6 @@ class ConfirmacionCorteService:
         self.repo = ConteoRecepcionRepository(db)
         self.asignacion_repo = AsignacionTallerRepository(db)
         self.incidencia_repo = IncidenciaRepository(db)
-        self.lote_repo = LoteRepository(db)
         self.usuario_repo = UsuarioRepository(db)
 
     # --- Lectura ---
@@ -93,64 +84,7 @@ class ConfirmacionCorteService:
         if asignacion is None:
             raise NotFoundError("No encontramos el envío de ese conteo")
 
-        merma_previa = self.incidencia_repo.calcular_cantidad_afectada(asignacion.id, empresa_id)
-        devuelta_previa = asignacion.cantidad_devuelta or 0
-        pendiente = asignacion.cantidad_asignada - devuelta_previa - merma_previa
-
-        if conteo.cantidad_buena + conteo.cantidad_danada > pendiente:
-            # Este mensaje SÍ nombra las cifras, y puede: lo lee corte, que es
-            # quien tiene derecho a verlas. Es el descuadre que el producto
-            # existe para sacar a la luz, y el texto dice qué hacer con él.
-            raise ValidationError(
-                f"Bodega contó {conteo.cantidad_buena + conteo.cantidad_danada} unidades y "
-                f"del envío solo quedaban {pendiente} pendientes. Habla con bodega para que "
-                f"revise el conteo antes de confirmar."
-            )
-
-        devolucion: Devolucion | None = None
-        if conteo.cantidad_buena > 0:
-            devolucion = Devolucion(
-                empresa_id=empresa_id,
-                asignacion_id=asignacion.id,
-                cantidad=conteo.cantidad_buena,
-                # La tabla guarda datetime y bodega anota un día. Se fija a
-                # medianoche UTC para que dos conteos del mismo día ordenen
-                # por id y no por una hora inventada.
-                fecha=datetime.combine(conteo.fecha, time.min, tzinfo=timezone.utc),
-            )
-            self.db.add(devolucion)
-            self.db.flush()
-            asignacion.cantidad_devuelta = devuelta_previa + conteo.cantidad_buena
-            asignacion.fecha_devolucion = devolucion.fecha
-
-        merma_total = merma_previa
-        if conteo.cantidad_danada > 0:
-            self.db.add(
-                Incidencia(
-                    empresa_id=empresa_id,
-                    asignacion_id=asignacion.id,
-                    tipo=TipoIncidencia.PRODUCTO_DANADO,
-                    cantidad_afectada=conteo.cantidad_danada,
-                    descripcion=conteo.nota,
-                    fecha=conteo.fecha,
-                )
-            )
-            merma_total += conteo.cantidad_danada
-
-            # Mismo criterio que IncidenciaService.crear: una merma no se
-            # resuelve sola, deja el lote marcado para que alguien lo mire.
-            lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
-            if lote and lote.estado != EstadoLote.CERRADO_CLIENTE:
-                lote.estado = EstadoLote.EN_REVISION_INCIDENCIA
-
-        recalcular_estado_asignacion(asignacion, merma_total)
-        AsignacionTallerService(self.db).recalcular_estado_lote(asignacion.lote_id, empresa_id)
-
-        conteo.estado = EstadoConteo.CONFIRMADO
-        conteo.confirmado_por_id = usuario_id
-        conteo.confirmado_at = datetime.now(timezone.utc)
-        if devolucion is not None:
-            conteo.devolucion_id = devolucion.id
+        aplicar_confirmacion(self.db, conteo, asignacion, empresa_id, usuario_id)
 
         reclamar_clave(
             self.db, empresa_id, idempotency_key, RUTA_CONFIRMAR, "conteo_recepcion", conteo.id
@@ -207,10 +141,12 @@ class ConfirmacionCorteService:
             taller=TallerOut.model_validate(asignacion.taller),
             producto=asignacion.lote.tipo_producto.nombre,
             referencia=asignacion.lote.tipo_producto.referencia,
-            color=asignacion.lote.color.nombre if asignacion.lote.color else None,
+            color=asignacion.lote.nombre_color,
             corte=etiqueta_de(asignacion.lote.corte) if asignacion.lote.corte else None,
             cantidad_buena=conteo.cantidad_buena,
             cantidad_danada=conteo.cantidad_danada,
+            cantidad_danada_materia=conteo.cantidad_danada_materia,
+            cantidad_arreglo=conteo.cantidad_arreglo,
             fecha=conteo.fecha,
             nota=conteo.nota,
             estado=conteo.estado,

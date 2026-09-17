@@ -21,6 +21,9 @@ class EmpresaUpdate(BaseModel):
     # El tope de 365 evita que alguien lo desactive de facto poniendo un
     # número absurdo, y el mínimo de 1 que se llene de alertas inútiles.
     dias_alerta_atraso: int | None = Field(default=None, ge=1, le=365)
+    #: Tamaño por defecto del rango al liquidar talleres. El tope de 30 es
+    #: el tiempo que se conserva el cuaderno de bodega.
+    quincena_dias: int | None = Field(default=None, ge=1, le=30)
 
 
 class SolicitarEliminacionCuenta(BaseModel):
@@ -37,6 +40,7 @@ class EmpresaOut(TimestampSchema):
     activo: bool
     usuario_propietario_id: int | None = None
     dias_alerta_atraso: int
+    quincena_dias: int
     # Si no es null, la cuenta está programada para borrarse y el front debe
     # avisarlo de forma visible, junto con la opción de cancelar.
     eliminacion_solicitada_at: datetime | None = None

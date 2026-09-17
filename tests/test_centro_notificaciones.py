@@ -74,14 +74,15 @@ def test_avisa_de_un_lote_atrasado(
 def test_avisa_si_no_se_pudo_enviar_la_ficha(
     db: Session, empresa: Empresa, admin: Usuario, lote: Lote, taller: Taller
 ):
+    asignacion = AsignacionTallerService(db).crear(
+        empresa.id,
+        AsignacionTallerCreate(
+            lote_id=lote.id, taller_id=taller.id, cantidad_asignada=50,
+            fecha_asignacion=date.today(),
+        ),
+    )
     with patch(RUTA_WHATSAPP, return_value=(False, "API access blocked")):
-        AsignacionTallerService(db).crear(
-            empresa.id,
-            AsignacionTallerCreate(
-                lote_id=lote.id, taller_id=taller.id, cantidad_asignada=50,
-                fecha_asignacion=date.today(),
-            ),
-        )
+        AsignacionTallerService(db).reenviar_notificacion(asignacion.id, empresa.id)
 
     centro = CentroNotificacionesService(db).listar(empresa.id, admin.id)
     assert TipoAviso.ENVIO_FALLIDO in _tipos(centro)
@@ -92,14 +93,15 @@ def test_un_reenvio_exitoso_quita_el_aviso(
 ):
     """El aviso mira el ÚLTIMO intento: si ya se reenvió bien, no debe seguir
     apareciendo como problema."""
+    asignacion = AsignacionTallerService(db).crear(
+        empresa.id,
+        AsignacionTallerCreate(
+            lote_id=lote.id, taller_id=taller.id, cantidad_asignada=50,
+            fecha_asignacion=date.today(),
+        ),
+    )
     with patch(RUTA_WHATSAPP, return_value=(False, "fallo")):
-        asignacion = AsignacionTallerService(db).crear(
-            empresa.id,
-            AsignacionTallerCreate(
-                lote_id=lote.id, taller_id=taller.id, cantidad_asignada=50,
-                fecha_asignacion=date.today(),
-            ),
-        )
+        AsignacionTallerService(db).reenviar_notificacion(asignacion.id, empresa.id)
     with patch(RUTA_WHATSAPP, return_value=(True, None)):
         AsignacionTallerService(db).reenviar_notificacion(asignacion.id, empresa.id)
 

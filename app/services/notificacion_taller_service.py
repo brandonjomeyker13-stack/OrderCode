@@ -86,7 +86,7 @@ def _intentar_notificar(
             lote_id=lote.id,
             asignacion_id=asignacion.id,
             corte=etiqueta_de(lote.corte) if lote.corte else None,
-            color=lote.color.nombre if lote.color else None,
+            color=lote.nombre_color,
         )
     except Exception as exc:
         logger.exception(

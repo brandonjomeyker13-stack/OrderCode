@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
+from app.core.pdf import generar_ficha_tecnica
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.devolucion import Devolucion
 from app.models.enums import CanalNotificacion, EstadoAsignacion, EstadoLote
@@ -20,6 +21,7 @@ from app.schemas.asignacion_taller import (
     AsignacionTallerUpdate,
 )
 from app.schemas.filtros import FiltrosAsignacion
+from app.services.corte_service import etiqueta_de
 from app.services.notificacion_taller_service import notificar_asignacion
 
 # Identifican la operación ante el registro de Idempotency-Key. Son
@@ -163,16 +165,16 @@ class AsignacionTallerService:
 
         ya_asignado = self.lote_repo.calcular_cantidad_asignada(lote.id, empresa_id)
         disponible = lote.cantidad_total - ya_asignado
-        if data.cantidad_asignada > disponible:
-            raise ValidationError(
-                f"La cantidad excede lo disponible en el lote ({disponible} unidades restantes)"
-            )
+        cantidad = self._cantidad_a_asignar(lote, data, disponible)
 
         asignacion = self.repo.create(
             AsignacionTaller(
                 empresa_id=empresa_id,
                 estado=EstadoAsignacion.ASIGNADO,
-                **data.model_dump(),
+                lote_id=data.lote_id,
+                taller_id=data.taller_id,
+                cantidad_asignada=cantidad,
+                fecha_asignacion=data.fecha_asignacion,
             )
         )
 
@@ -190,11 +192,42 @@ class AsignacionTallerService:
             raise ValidationError("No se pudo completar la asignación, intenta de nuevo")
 
         self.db.refresh(asignacion)
-
-        empresa = self.empresa_repo.get_by_id(empresa_id)
-        notificar_asignacion(self.db, empresa_id, asignacion, lote, taller, empresa.nombre)
-
         return self._con_merma(asignacion, empresa_id)
+
+    def _cantidad_a_asignar(self, lote, data: AsignacionTallerCreate, disponible: int) -> int:
+        """En el flujo nuevo solo salen proporciones enteras.
+
+        Una proporción de leguins negros de 20 capas son 20 unidades, no 19.
+        El flujo viejo (sin capas_color) sigue asignando unidades sueltas.
+        """
+        if lote.es_por_proporciones:
+            tamano = lote.capas_color
+            if data.proporciones is not None:
+                cantidad = data.proporciones * tamano
+                if (
+                    data.cantidad_asignada is not None
+                    and data.cantidad_asignada != cantidad
+                ):
+                    raise ValidationError(
+                        f"Esa proporción son {cantidad} unidades, no {data.cantidad_asignada}"
+                    )
+            else:
+                if data.cantidad_asignada % tamano != 0:
+                    raise ValidationError(
+                        f"En este corte solo se asignan proporciones enteras "
+                        f"({tamano} unidades cada una)"
+                    )
+                cantidad = data.cantidad_asignada
+        else:
+            if data.cantidad_asignada is None:
+                raise ValidationError("Indica cuántas unidades asignas")
+            cantidad = data.cantidad_asignada
+
+        if cantidad > disponible:
+            raise ValidationError(
+                f"La cantidad excede lo disponible en el lote ({disponible} unidades restantes)"
+            )
+        return cantidad
 
     def obtener(self, id: int, empresa_id: int) -> AsignacionTaller:
         asignacion = self.repo.get_by_id(id, empresa_id)
@@ -420,6 +453,25 @@ class AsignacionTallerService:
                 lote.estado = EstadoLote.PENDIENTE_ASIGNACION
 
         self.db.commit()
+
+    def ficha_pdf(self, id: int, empresa_id: int) -> bytes:
+        """La ficha para imprimir. Ya no se manda por WhatsApp ni correo."""
+        asignacion = self.obtener(id, empresa_id)
+        lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
+        empresa = self.empresa_repo.get_by_id(empresa_id)
+        return generar_ficha_tecnica(
+            empresa_nombre=empresa.nombre,
+            taller_nombre=asignacion.taller.nombre,
+            taller_numero=asignacion.taller.numero_taller,
+            tipo_producto_nombre=lote.tipo_producto.nombre,
+            tipo_producto_referencia=lote.tipo_producto.referencia,
+            cantidad_asignada=asignacion.cantidad_asignada,
+            fecha_asignacion=asignacion.fecha_asignacion,
+            lote_id=lote.id,
+            asignacion_id=asignacion.id,
+            corte=etiqueta_de(lote.corte) if lote.corte else None,
+            color=lote.nombre_color,
+        )
 
     def reenviar_notificacion(self, id: int, empresa_id: int) -> AsignacionTallerOut:
         """Reintenta manualmente el envío de la ficha técnica -- útil si
