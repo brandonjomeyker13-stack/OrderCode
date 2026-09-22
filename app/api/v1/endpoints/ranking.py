@@ -23,7 +23,7 @@ router = APIRouter(prefix="/ranking", tags=["ranking"])
 @router.get("/talleres", response_model=RankingTalleres)
 def ranking_de_talleres(
     desde: date | None = Query(
-        default=None, description="Primer día del corte (inclusive). Por defecto, 30 días atrás."
+        default=None, description="Primer día del corte (inclusive). Por defecto, la quincena en curso."
     ),
     hasta: date | None = Query(
         default=None, description="Último día del corte (inclusive). Por defecto, hoy."
@@ -35,9 +35,9 @@ def ranking_de_talleres(
     """Comparativa de talleres en un periodo: cuánto entregó cada uno, cuánto
     se dañó, qué tan rápido y qué le queda pendiente. Admin y corte.
 
-    El periodo es libre porque cada empresa cierra distinto -- quincenal,
-    mensual, o por lote terminado. Ambas fechas son inclusivas: pedir del 1 al
-    15 incluye lo entregado el día 15.
+    El periodo es libre porque cada empresa cierra distinto -- quincena de
+    sábado a sábado, mes, o un rango a mano si hay eventualidad. Ambas fechas
+    son inclusivas: pedir del 1 al 15 incluye lo entregado el día 15.
     """
     return RankingService(db).talleres(empresa_id, desde=desde, hasta=hasta)
 

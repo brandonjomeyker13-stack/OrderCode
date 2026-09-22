@@ -1,14 +1,15 @@
 # app/services/recepcion/cierre.py
 """Cerrar un conteo: nace la devolución y se mueve el saldo del taller.
 
-Lo usan tanto la confirmación a mano (flujo viejo) como el cierre automático
-cuando una proporción nueva ya está completa. No hace commit: quien llama
-cierra la transacción.
+Lo usan el cierre automático al completar la proporción y, en lotes viejos,
+la aplicación al anotar. Corte ya no confirma: bodega anota y puede deshacer.
+No hace commit: quien llama cierra la transacción.
 """
 from __future__ import annotations
 
 from datetime import datetime, time, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ValidationError
@@ -88,6 +89,53 @@ def aplicar_confirmacion(
     conteo.confirmado_at = datetime.now(timezone.utc)
     if devolucion is not None:
         conteo.devolucion_id = devolucion.id
+
+
+def deshacer_aplicacion(
+    db: Session,
+    conteo: ConteoRecepcion,
+    asignacion: AsignacionTaller,
+    empresa_id: int,
+) -> None:
+    """Quita el efecto de un conteo ya aplicado para que bodega pueda corregirlo.
+
+    `asignacion` tiene que ir con lock. No hace commit.
+    """
+    if conteo.estado != EstadoConteo.CONFIRMADO:
+        return
+
+    if conteo.devolucion_id is not None:
+        devolucion = db.get(Devolucion, conteo.devolucion_id)
+        if devolucion is not None:
+            asignacion.cantidad_devuelta = max(
+                0, (asignacion.cantidad_devuelta or 0) - devolucion.cantidad
+            )
+            db.delete(devolucion)
+        conteo.devolucion_id = None
+
+    if conteo.cantidad_danada > 0:
+        incidencia = db.execute(
+            select(Incidencia)
+            .where(
+                Incidencia.asignacion_id == asignacion.id,
+                Incidencia.empresa_id == empresa_id,
+                Incidencia.tipo == TipoIncidencia.PRODUCTO_DANADO,
+                Incidencia.fecha == conteo.fecha,
+                Incidencia.cantidad_afectada == conteo.cantidad_danada,
+            )
+            .order_by(Incidencia.id.desc())
+        ).scalars().first()
+        if incidencia is not None:
+            db.delete(incidencia)
+
+    conteo.estado = EstadoConteo.REPORTADO
+    conteo.confirmado_por_id = None
+    conteo.confirmado_at = None
+    db.flush()
+
+    merma = IncidenciaRepository(db).calcular_cantidad_afectada(asignacion.id, empresa_id)
+    recalcular_estado_asignacion(asignacion, merma)
+    AsignacionTallerService(db).recalcular_estado_lote(asignacion.lote_id, empresa_id)
 
 
 def proporcion_completa(

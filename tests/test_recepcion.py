@@ -1,17 +1,11 @@
 # tests/test_recepcion.py
 """
-La recepción a dos manos: bodega cuenta, corte confirma.
+La recepción de bodega: cuenta a ciegas y, si se equivoca, corrige.
 
 Lo que estas pruebas cuidan no es un formulario, es un control. Bodega cuenta
 sin saber cuánto se envió; si su cifra no coincide, el sistema NO la rechaza
--- la deja anotada y se la muestra a corte con la diferencia calculada, para
-que la conversación pase entre dos personas y no entre una persona y un
-mensaje de error.
-
-Por eso la prueba que más importa de este archivo es la primera: que un conteo
-que no cuadra se guarde igual. El diseño anterior lo rechazaba con un 422 que
-decía la cantidad exacta que faltaba, o sea que le enseñaba a bodega el número
-que tenía que teclear para que lo aceptaran.
+-- la deja anotada. En lotes viejos se aplica al anotarla; en el flujo de
+capas espera a que la proporción esté completa. Corte ya no confirma.
 """
 from datetime import date, timedelta
 
@@ -131,10 +125,11 @@ def test_un_conteo_que_no_cuadra_se_guarda_igual(
     db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
     """Salieron 50 y bodega cuenta 48. Antes esto era un 422 que decía "faltan
-    2"; ahora queda anotado y la diferencia se la explica a corte."""
+    2"; ahora queda anotado. En el lote viejo se aplica al anotarlo."""
     conteo = _contar(db, empresa, asignacion, bodega, buenas=48)
 
-    assert conteo.estado == EstadoConteo.REPORTADO
+    assert conteo.cantidad_buena == 48
+    assert conteo.estado == EstadoConteo.CONFIRMADO
 
 
 def test_bodega_puede_reportar_de_mas_sin_que_el_sistema_la_corrija(
@@ -146,20 +141,18 @@ def test_bodega_puede_reportar_de_mas_sin_que_el_sistema_la_corrija(
     conteo = _contar(db, empresa, asignacion, bodega, buenas=60)
 
     assert conteo.cantidad_buena == 60
-    assert conteo.estado == EstadoConteo.REPORTADO
+    assert conteo.estado == EstadoConteo.CONFIRMADO
 
 
-def test_el_reporte_no_mueve_el_saldo_del_taller(
+def test_al_anotar_se_mueve_el_saldo_del_taller(
     db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
-    """Hasta que corte no confirme, para el resto del sistema no pasó nada.
-    Si el reporte descontara saldo, un conteo equivocado ya habría cerrado la
-    asignación antes de que nadie lo revisara."""
+    """Corte ya no confirma: al anotar, las buenas entran y el taller baja."""
     _contar(db, empresa, asignacion, bodega, buenas=48)
 
     fresca = AsignacionTallerRepository(db).get_by_id(asignacion.id, empresa.id)
-    assert (fresca.cantidad_devuelta or 0) == 0
-    assert fresca.estado == EstadoAsignacion.ASIGNADO
+    assert fresca.cantidad_devuelta == 48
+    assert fresca.estado == EstadoAsignacion.ENTREGADO_PARCIAL
 
 
 def test_un_conteo_vacio_no_es_un_conteo(
@@ -190,15 +183,13 @@ def test_la_fecha_anterior_a_la_salida_se_rechaza(
 
 
 def test_el_envio_ya_cerrado_no_admite_otro_conteo(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
     """Ese envío ya no sale en la lista de bodega: si llega un conteo suyo es
-    una pantalla vieja. Sin esta guardia el reporte se guardaba y reventaba
-    después, al confirmar, dejando una fila que alguien tenía que ir a borrar.
+    una pantalla vieja.
 
     El mensaje no puede nombrar cantidades: lo lee bodega."""
-    conteo = _contar(db, empresa, asignacion, bodega, buenas=50)
-    ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
+    _contar(db, empresa, asignacion, bodega, buenas=50)
 
     with pytest.raises(ValidationError) as excinfo:
         _contar(db, empresa, asignacion, bodega, buenas=5)
@@ -208,94 +199,36 @@ def test_el_envio_ya_cerrado_no_admite_otro_conteo(
     assert "50" not in mensaje
 
 
-# --- Lo que ve corte ---
+# --- Al anotar se aplica ---
 
 
-def test_corte_ve_la_diferencia_ya_calculada(
+def test_al_anotar_nace_la_devolucion_y_se_mueve_el_saldo(
     db: Session, empresa: Empresa, asignacion, bodega: Usuario
-):
-    """El momento del producto: las dos cifras una al lado de la otra. Se
-    calcula en el servidor para que la cifra que se discute sea una sola."""
-    _contar(db, empresa, asignacion, bodega, buenas=48)
-
-    porconfirmar = ConfirmacionCorteService(db).listar_por_confirmar(empresa.id)
-
-    assert len(porconfirmar) == 1
-    fila = porconfirmar[0]
-    assert fila.cantidad_asignada == 50
-    assert fila.cantidad_pendiente == 50
-    assert fila.diferencia == -2
-    assert fila.contado_por == "Jefa de Bodega"
-
-
-def test_la_diferencia_positiva_dice_que_llego_de_mas(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario
-):
-    """Con signo a propósito: "faltan 3" y "sobran 3" son dos conversaciones
-    distintas con el taller."""
-    _contar(db, empresa, asignacion, bodega, buenas=53)
-
-    assert ConfirmacionCorteService(db).listar_por_confirmar(empresa.id)[0].diferencia == 3
-
-
-def test_lo_confirmado_ya_no_aparece_por_confirmar(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
-):
-    conteo = _contar(db, empresa, asignacion, bodega, buenas=50)
-    ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
-
-    assert ConfirmacionCorteService(db).contar_por_confirmar(empresa.id) == 0
-
-
-# --- Confirmar ---
-
-
-def test_al_confirmar_nace_la_devolucion_y_se_mueve_el_saldo(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
 ):
     conteo = _contar(db, empresa, asignacion, bodega, buenas=50)
 
-    confirmado = ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
-
-    assert confirmado.estado == EstadoConteo.CONFIRMADO
-    assert confirmado.confirmado_por == "Miriam"
+    assert conteo.estado == EstadoConteo.CONFIRMADO
     fresca = AsignacionTallerRepository(db).get_by_id(asignacion.id, empresa.id)
     assert fresca.cantidad_devuelta == 50
     assert fresca.estado == EstadoAsignacion.ENTREGADO_COMPLETO
     assert len(fresca.devoluciones) == 1
-
-
-def test_quien_confirma_queda_escrito(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
-):
-    """El control de cuatro ojos no es una costumbre si se puede comprobar
-    después quién contó y quién dio el visto bueno."""
-    conteo = _contar(db, empresa, asignacion, bodega, buenas=50)
-    confirmado = ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
-
-    assert confirmado.contado_por == "Jefa de Bodega"
-    assert confirmado.confirmado_por == "Miriam"
-    assert confirmado.confirmado_at is not None
+    assert ConfirmacionCorteService(db).contar_por_confirmar(empresa.id) == 0
 
 
 def test_una_entrega_parcial_deja_la_asignacion_abierta(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
-    conteo = _contar(db, empresa, asignacion, bodega, buenas=30)
-    ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
+    _contar(db, empresa, asignacion, bodega, buenas=30)
 
     fresca = AsignacionTallerRepository(db).get_by_id(asignacion.id, empresa.id)
     assert fresca.estado == EstadoAsignacion.ENTREGADO_PARCIAL
 
 
 def test_las_danadas_se_vuelven_merma_y_marcan_el_lote(
-    db: Session, empresa: Empresa, lote: Lote, asignacion, bodega: Usuario, corte: Usuario
+    db: Session, empresa: Empresa, lote: Lote, asignacion, bodega: Usuario
 ):
-    """La queja de bodega viaja dentro de su conteo: no necesita un trámite
-    aparte, y corte la ve en el mismo sitio donde confirma."""
-    conteo = _contar(db, empresa, asignacion, bodega, buenas=45, danadas=5, nota="Manchadas")
-
-    ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
+    """La queja de bodega viaja dentro de su conteo: no necesita un trámite aparte."""
+    _contar(db, empresa, asignacion, bodega, buenas=45, danadas=5, nota="Manchadas")
 
     merma = IncidenciaRepository(db).calcular_cantidad_afectada(asignacion.id, empresa.id)
     assert merma == 5
@@ -303,43 +236,29 @@ def test_las_danadas_se_vuelven_merma_y_marcan_el_lote(
     assert lote.estado == EstadoLote.EN_REVISION_INCIDENCIA
 
 
-def test_confirmar_mas_de_lo_que_salio_se_frena_y_explica_con_cifras(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
+def test_anotar_de_mas_no_delata_cuanto_salio(
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
-    """Este mensaje SÍ nombra las cantidades, y puede: lo lee corte, que tiene
-    derecho a verlas. Y dice qué hacer, que es hablar con bodega."""
+    """Contar 60 de 50 se guarda: el error no puede enseñarle a bodega el tope."""
     conteo = _contar(db, empresa, asignacion, bodega, buenas=60)
 
-    with pytest.raises(ValidationError) as excinfo:
-        ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
-
-    assert "60" in excinfo.value.message and "50" in excinfo.value.message
-    assert "bodega" in excinfo.value.message.lower()
-
-
-def test_confirmar_dos_veces_no_duplica_la_devolucion(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
-):
-    conteo = _contar(db, empresa, asignacion, bodega, buenas=50)
-    ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
-
-    with pytest.raises(ValidationError):
-        ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
-
+    assert conteo.cantidad_buena == 60
     fresca = AsignacionTallerRepository(db).get_by_id(asignacion.id, empresa.id)
-    assert fresca.cantidad_devuelta == 50
+    assert fresca.cantidad_devuelta == 60
+    assert fresca.estado == EstadoAsignacion.ENTREGADO_COMPLETO
 
 
-def test_el_doble_clic_con_la_misma_clave_confirma_una_sola_vez(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
+def test_el_doble_clic_con_la_misma_clave_anota_una_sola_vez(
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
     """El caso más frecuente en planta: la misma persona toca el botón dos
     veces porque la primera no pareció responder."""
-    conteo = _contar(db, empresa, asignacion, bodega, buenas=50)
-    servicio = ConfirmacionCorteService(db)
-
-    primero = servicio.confirmar(conteo.id, empresa.id, corte.id, idempotency_key="clic-1")
-    segundo = servicio.confirmar(conteo.id, empresa.id, corte.id, idempotency_key="clic-1")
+    servicio = RecepcionBodegaService(db)
+    data = ConteoCreate(
+        asignacion_id=asignacion.id, cantidad_buena=50, fecha=LLEGADA
+    )
+    primero = servicio.registrar(empresa.id, data, usuario_id=bodega.id, idempotency_key="clic-1")
+    segundo = servicio.registrar(empresa.id, data, usuario_id=bodega.id, idempotency_key="clic-1")
 
     assert primero.id == segundo.id
     fresca = AsignacionTallerRepository(db).get_by_id(asignacion.id, empresa.id)
@@ -347,81 +266,24 @@ def test_el_doble_clic_con_la_misma_clave_confirma_una_sola_vez(
 
 
 def test_dos_tandas_del_mismo_taller_se_acumulan(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
-    """Un taller puede entregar en varias veces; cada tanda es su propio
-    conteo y su propia confirmación."""
-    servicio = ConfirmacionCorteService(db)
-    primero = _contar(db, empresa, asignacion, bodega, buenas=30)
-    servicio.confirmar(primero.id, empresa.id, corte.id)
-    segundo = _contar(db, empresa, asignacion, bodega, buenas=20)
-    servicio.confirmar(segundo.id, empresa.id, corte.id)
+    """Un taller puede entregar en varias veces; cada tanda se aplica al anotarla."""
+    _contar(db, empresa, asignacion, bodega, buenas=30)
+    _contar(db, empresa, asignacion, bodega, buenas=20)
 
     fresca = AsignacionTallerRepository(db).get_by_id(asignacion.id, empresa.id)
     assert fresca.cantidad_devuelta == 50
     assert fresca.estado == EstadoAsignacion.ENTREGADO_COMPLETO
 
 
-def test_las_tandas_sin_confirmar_se_leen_como_un_solo_envio(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario
-):
-    """El taller trajo las 50 en dos viajes y ninguno está confirmado todavía.
-
-    Mirado reporte por reporte, cada uno parece incompleto: como hasta la
-    confirmación no se descuenta nada, los dos se comparan contra el mismo
-    pendiente y los dos dicen "faltan". Sumados son la entrega completa, y esa
-    es la cifra que corte tiene que ver antes de decidir.
-    """
-    _contar(db, empresa, asignacion, bodega, buenas=30)
-    _contar(db, empresa, asignacion, bodega, buenas=20)
-
-    lista = ConfirmacionCorteService(db).listar_por_confirmar(empresa.id)
-
-    assert [c.diferencia for c in lista] == [-20, -30], "cada tanda suelta parece corta"
-    for c in lista:
-        assert c.conteos_sin_confirmar == 2
-        assert c.contado_sin_confirmar == 50
-        assert c.diferencia_del_envio == 0, "juntas sí cuadran con lo que se mandó"
-
-
-def test_una_sola_tanda_se_lee_igual_que_antes(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario
-):
-    """El caso normal no cambia: una entrega, una tarjeta, la misma cifra."""
-    _contar(db, empresa, asignacion, bodega, buenas=45, danadas=5)
-
-    [solo] = ConfirmacionCorteService(db).listar_por_confirmar(empresa.id)
-
-    assert solo.conteos_sin_confirmar == 1
-    assert solo.contado_sin_confirmar == 50
-    assert solo.diferencia_del_envio == solo.diferencia == 0
-
-
-def test_lo_ya_confirmado_no_suma_al_envio_en_espera(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
-):
-    """Solo cuenta lo que sigue esperando: lo confirmado ya movió el saldo y
-    volver a sumarlo haría ver un sobrante que no existe."""
-    primero = _contar(db, empresa, asignacion, bodega, buenas=30)
-    ConfirmacionCorteService(db).confirmar(primero.id, empresa.id, corte.id)
-    _contar(db, empresa, asignacion, bodega, buenas=20)
-
-    [pendiente] = ConfirmacionCorteService(db).listar_por_confirmar(empresa.id)
-
-    assert pendiente.conteos_sin_confirmar == 1
-    assert pendiente.contado_sin_confirmar == 20
-    assert pendiente.cantidad_pendiente == 20, "las 30 ya confirmadas salieron del saldo"
-    assert pendiente.diferencia_del_envio == 0
-
-
 # --- Corregirse ---
 
 
-def test_bodega_puede_corregir_mientras_no_este_confirmado(
+def test_bodega_puede_corregir_aunque_ya_se_aplico(
     db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
-    """La salida cuando la cifra no cuadra: hablan, bodega vuelve a contar y
-    arregla su reporte. Por eso no hace falta un estado de 'rechazado'."""
+    """Si se equivocó, deshace el efecto y vuelve a contar."""
     conteo = _contar(db, empresa, asignacion, bodega, buenas=48)
 
     corregido = RecepcionBodegaService(db).corregir(
@@ -429,23 +291,24 @@ def test_bodega_puede_corregir_mientras_no_este_confirmado(
     )
 
     assert corregido.cantidad_buena == 50
-    assert corregido.estado == EstadoConteo.REPORTADO
+    assert corregido.estado == EstadoConteo.CONFIRMADO
+    fresca = AsignacionTallerRepository(db).get_by_id(asignacion.id, empresa.id)
+    assert fresca.cantidad_devuelta == 50
+    assert fresca.estado == EstadoAsignacion.ENTREGADO_COMPLETO
 
 
-def test_despues_de_confirmado_bodega_ya_no_lo_toca(
-    db: Session, empresa: Empresa, asignacion, bodega: Usuario, corte: Usuario
+def test_despues_de_aplicado_bodega_sigue_pudiendo_borrar(
+    db: Session, empresa: Empresa, asignacion, bodega: Usuario
 ):
-    """Ya movió el saldo del taller y el estado del lote: deshacer eso no es
-    una corrección de captura."""
     conteo = _contar(db, empresa, asignacion, bodega, buenas=50)
-    ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
 
-    with pytest.raises(ValidationError):
-        RecepcionBodegaService(db).corregir(
-            conteo.id, empresa.id, ConteoUpdate(cantidad_buena=10)
-        )
-    with pytest.raises(ValidationError):
-        RecepcionBodegaService(db).eliminar(conteo.id, empresa.id)
+    RecepcionBodegaService(db).eliminar(conteo.id, empresa.id)
+
+    with pytest.raises(NotFoundError):
+        RecepcionBodegaService(db).obtener(conteo.id, empresa.id)
+    fresca = AsignacionTallerRepository(db).get_by_id(asignacion.id, empresa.id)
+    assert (fresca.cantidad_devuelta or 0) == 0
+    assert fresca.estado == EstadoAsignacion.ASIGNADO
 
 
 def test_borrar_un_reporte_del_bulto_equivocado(

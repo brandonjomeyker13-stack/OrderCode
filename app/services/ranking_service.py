@@ -14,17 +14,16 @@ from sqlalchemy.orm import Session
 
 from app.core.excel import nombre_de_archivo, ranking_a_excel
 from app.core.exceptions import ValidationError
-from app.core.fechas import fecha_local_de, hoy_local
+from app.core.fechas import fecha_local_de, hoy_local, rango_quincena_sabado
 from app.repositories.empresa_repository import EmpresaRepository
 from app.repositories.ranking_repository import RankingRepository
 from app.schemas.ranking import RankingTaller, RankingTalleres
 
 
 class RankingService:
-    # Periodo por defecto cuando no se piden fechas. No es "el mes en curso"
-    # a propósito: hay empresas que pagan quincenal y ese default les daría un
-    # corte que no usan nunca.
-    DIAS_POR_DEFECTO = 30
+    # Periodo por defecto cuando no se piden fechas: la quincena en curso
+    # (sábado de por medio). El rango a mano sigue disponible.
+    DIAS_POR_DEFECTO = 14
 
     def __init__(self, db: Session):
         self.db = db
@@ -37,8 +36,14 @@ class RankingService:
         desde: date | None = None,
         hasta: date | None = None,
     ) -> RankingTalleres:
-        hasta = hasta or hoy_local()
-        desde = desde or hasta - timedelta(days=self.DIAS_POR_DEFECTO - 1)
+        if desde is None and hasta is None:
+            desde, hasta = rango_quincena_sabado()
+            hoy = hoy_local()
+            if hasta > hoy:
+                hasta = hoy
+        else:
+            hasta = hasta or hoy_local()
+            desde = desde or hasta - timedelta(days=self.DIAS_POR_DEFECTO - 1)
 
         if desde > hasta:
             raise ValidationError("La fecha 'desde' no puede ser posterior a 'hasta'")

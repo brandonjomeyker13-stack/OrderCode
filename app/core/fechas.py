@@ -56,3 +56,22 @@ def fecha_local_de(momento: datetime) -> date:
     if momento.tzinfo is None:
         momento = momento.replace(tzinfo=timezone.utc)
     return momento.astimezone(zona()).date()
+
+
+# Sábado 6 ene 2024: ancla de las quincenas de planta (14 días, cierran sábado).
+_ANCLA_QUINCENA = date(2024, 1, 6)
+
+
+def rango_quincena_sabado(
+    ref: date | None = None, *, offset: int = 0
+) -> tuple[date, date]:
+    """Bloques de 14 días que cierran el sábado de por medio.
+
+    `offset=0` es la quincena que contiene `ref` (hoy por defecto).
+    `offset=-1` es la anterior.
+    """
+    ref = ref or hoy_local()
+    inicio_bloque_0 = _ANCLA_QUINCENA - timedelta(days=13)
+    bloque = (ref - inicio_bloque_0).days // 14 + offset
+    inicio = inicio_bloque_0 + timedelta(days=bloque * 14)
+    return inicio, inicio + timedelta(days=13)

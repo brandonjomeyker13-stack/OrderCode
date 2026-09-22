@@ -8,9 +8,9 @@ que parecen raras -- borrar una salida devuelve las unidades, corregirla no se
 pelea consigo misma -- y todas comprueban lo mismo desde ángulos distintos: que
 no hay un saldo guardado que se pueda quedar viejo.
 
-La otra regla, la que conecta con la recepción: un conteo que bodega registró
-y corte todavía no confirmó NO es inventario. Mientras nadie lo revise, esas
-prendas siguen contando como si estuvieran en el taller.
+La otra regla, la que conecta con la recepción: un conteo que todavía no
+completa la proporción (flujo nuevo) no es inventario. En lotes viejos el
+conteo se aplica al anotarlo: corte ya no confirma.
 """
 from datetime import date, timedelta
 
@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.security import hash_password
 from app.models.empresa import Empresa
-from app.models.enums import EstadoLote, RolUsuario
+from app.models.enums import EstadoConteo, EstadoLote, RolUsuario
 from app.models.lote import Lote
 from app.models.qr_code import QRCode
 from app.models.taller import Taller
@@ -102,7 +102,7 @@ def asignacion(db: Session, empresa: Empresa, lote: Lote, taller: Taller):
 
 
 def _recibir(db, empresa, asignacion, bodega, corte, buenas, danadas=0, confirmar=True):
-    """El recorrido completo: bodega cuenta y corte confirma."""
+    """Bodega cuenta; en lotes viejos el conteo se aplica al anotarlo."""
     conteo = RecepcionBodegaService(db).registrar(
         empresa.id,
         ConteoCreate(
@@ -113,7 +113,7 @@ def _recibir(db, empresa, asignacion, bodega, corte, buenas, danadas=0, confirma
         ),
         usuario_id=bodega.id,
     )
-    if confirmar:
+    if confirmar and conteo.estado != EstadoConteo.CONFIRMADO:
         ConfirmacionCorteService(db).confirmar(conteo.id, empresa.id, corte.id)
     return conteo
 
@@ -142,15 +142,13 @@ def test_lo_confirmado_aparece_como_disponible(
     assert [tanda.lote_id for tanda in resumen.lineas[0].tandas] == [lote.id]
 
 
-def test_un_conteo_sin_confirmar_no_es_inventario(
+def test_un_conteo_anotado_ya_es_inventario(
     db: Session, empresa: Empresa, asignacion, bodega, corte
 ):
-    """La prueba que une las dos etapas. Mientras corte no revise, para el
-    sistema esas prendas siguen en el taller -- y esa es justamente la razón
-    de que la confirmación exista."""
+    """Corte ya no confirma: al anotar, las buenas entran al cuaderno."""
     _recibir(db, empresa, asignacion, bodega, corte, buenas=50, confirmar=False)
 
-    assert InventarioService(db).resumen(empresa.id).total_disponible == 0
+    assert InventarioService(db).resumen(empresa.id).total_disponible == 50
 
 
 def test_lo_danado_no_esta_listo_para_vender(

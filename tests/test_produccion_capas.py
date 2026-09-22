@@ -1,10 +1,10 @@
 # tests/test_produccion_capas.py
 """El tendido por capas, la asignación por proporciones y el cierre al completar.
 
-El flujo viejo (lineas + color_id + confirmar) se queda para no romper el
-front que aún está en producción. Estas pruebas cubren el flujo nuevo: Miriam
-escribe colores a mano, manda proporciones enteras, Laura cuenta a ciegas y
-la proporción se cierra sola cuando está completa.
+El flujo viejo (lineas + color_id) se queda para no romper lotes históricos.
+Estas pruebas cubren el flujo nuevo: Miriam escribe colores a mano, manda
+proporciones enteras, Laura cuenta a ciegas y la proporción se cierra sola
+cuando está completa. Corte ya no confirma.
 """
 from datetime import date, timedelta
 
@@ -27,7 +27,7 @@ from app.schemas.corte import (
     PrendaDeCorteCreate,
 )
 from app.schemas.inventario import VentaCreate
-from app.schemas.recepcion import ConteoCreate
+from app.schemas.recepcion import ConteoCreate, ConteoUpdate
 from app.services.asignacion_taller_service import AsignacionTallerService
 from app.services.corte_service import CorteService
 from app.services.inventario_service import InventarioService
@@ -436,6 +436,71 @@ def test_vender_no_baja_lo_contado_en_bodega(
     assert linea.cantidad_disponible == 12
     assert linea.cantidad_vendida == 8
     assert InventarioService(db).resumen(empresa.id).total_disponible == 12
+
+
+def test_bodega_corrige_despues_de_cerrar_la_proporcion(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller, bodega
+):
+    """Laura puede bajar o subir el conteo aunque ya hubiera cerrado."""
+    negra = _linea(_tendido(db, empresa, leguins), "Negro")
+    envio = AsignacionTallerService(db).crear(
+        empresa.id,
+        AsignacionTallerCreate(
+            lote_id=negra.lote_id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+        ),
+    )
+    conteo = RecepcionBodegaService(db).registrar(
+        empresa.id,
+        ConteoCreate(asignacion_id=envio.id, cantidad_buena=20, fecha=LLEGADA),
+        usuario_id=bodega.id,
+    )
+    assert conteo.estado == EstadoConteo.CONFIRMADO
+    assert InventarioService(db).resumen(empresa.id).total_disponible == 20
+
+    incompleto = RecepcionBodegaService(db).corregir(
+        conteo.id, empresa.id, ConteoUpdate(cantidad_buena=18)
+    )
+    assert incompleto.estado == EstadoConteo.REPORTADO
+    assert InventarioService(db).resumen(empresa.id).total_disponible == 0
+
+    otra_vez = RecepcionBodegaService(db).corregir(
+        conteo.id, empresa.id, ConteoUpdate(cantidad_buena=20)
+    )
+    assert otra_vez.estado == EstadoConteo.CONFIRMADO
+    assert InventarioService(db).resumen(empresa.id).total_disponible == 20
+
+
+def test_no_se_baja_el_conteo_por_debajo_de_lo_vendido(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller, bodega, ventas
+):
+    negra = _linea(_tendido(db, empresa, leguins), "Negro")
+    envio = AsignacionTallerService(db).crear(
+        empresa.id,
+        AsignacionTallerCreate(
+            lote_id=negra.lote_id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+        ),
+    )
+    conteo = RecepcionBodegaService(db).registrar(
+        empresa.id,
+        ConteoCreate(asignacion_id=envio.id, cantidad_buena=20, fecha=LLEGADA),
+        usuario_id=bodega.id,
+    )
+    InventarioService(db).registrar(
+        empresa.id,
+        VentaCreate(lote_id=negra.lote_id, cantidad=8, fecha=LLEGADA),
+        usuario_id=ventas.id,
+    )
+
+    with pytest.raises(ValidationError, match="salieron"):
+        RecepcionBodegaService(db).corregir(
+            conteo.id, empresa.id, ConteoUpdate(cantidad_buena=5)
+        )
+
+    linea = next(
+        l for l in InventarioService(db).panorama(empresa.id).lineas if l.color == "Negro"
+    )
+    assert linea.cantidad_contada == 20
+    assert linea.cantidad_disponible == 12
 
 
 def test_el_panorama_se_filtra_por_taller(

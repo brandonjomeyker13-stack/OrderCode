@@ -13,6 +13,7 @@ from app.models.enums import EstadoAsignacion, EstadoConteo
 from app.repositories.asignacion_taller_repository import AsignacionTallerRepository
 from app.repositories.conteo_recepcion_repository import ConteoRecepcionRepository
 from app.repositories.lote_repository import LoteRepository
+from app.repositories.venta_repository import VentaRepository
 from app.schemas.recepcion import (
     ConteoBodegaOut,
     ConteoCreate,
@@ -21,7 +22,7 @@ from app.schemas.recepcion import (
 )
 from app.schemas.taller import TallerOut
 from app.services.corte_service import etiqueta_de
-from app.services.recepcion.cierre import aplicar_confirmacion, proporcion_completa
+from app.services.recepcion.cierre import aplicar_confirmacion, deshacer_aplicacion, proporcion_completa
 
 #: Identifica la operación ante el registro de Idempotency-Key. Es un
 #: identificador opaco, no una URL: si la ruta cambia, este literal NO debe
@@ -78,6 +79,7 @@ class RecepcionBodegaService:
         self.repo = ConteoRecepcionRepository(db)
         self.asignacion_repo = AsignacionTallerRepository(db)
         self.lote_repo = LoteRepository(db)
+        self.venta_repo = VentaRepository(db)
 
     # --- Lectura ---
 
@@ -136,8 +138,8 @@ class RecepcionBodegaService:
         Esa ausencia es la función entera. Validar aquí obligaría a rechazar
         el conteo que no cuadra, y el rechazo tendría que decir cuál era el
         número bueno -- con lo cual bodega aprendería la cifra que no debe
-        saber y le bastaría con teclearla. El descuadre se detecta después,
-        cuando corte compara, que es quien sí puede ver las dos cifras.
+        saber y le bastaría con teclearla. Si la proporción se completa, el
+        conteo se aplica solo. Corte no confirma.
         """
         recurso_id = resolver_recurso_previo(
             self.db, empresa_id, idempotency_key, "conteo_recepcion", RUTA_CONTEO
@@ -180,7 +182,7 @@ class RecepcionBodegaService:
         self.db.add(conteo)
         self.db.flush()
 
-        self._cerrar_si_proporcion_completa(asignacion, empresa_id, usuario_id)
+        self._aplicar_conteos(asignacion, empresa_id, usuario_id)
 
         reclamar_clave(
             self.db, empresa_id, idempotency_key, RUTA_CONTEO, "conteo_recepcion", conteo.id
@@ -201,48 +203,66 @@ class RecepcionBodegaService:
     def corregir(self, id: int, empresa_id: int, data: ConteoUpdate) -> ConteoBodegaOut:
         """Bodega vuelve a contar y arregla su propio reporte.
 
-        Solo mientras corte no lo haya confirmado. Después ya movió el saldo
-        del taller y el estado del lote: deshacer eso no es una corrección de
-        captura, y quien lo haga tiene que ser admin por los endpoints que ya
-        existen para eso.
+        Puede hacerlo aunque el conteo ya se haya aplicado: se deshace el
+        efecto, se guarda la cifra nueva y, si la proporción sigue completa,
+        se vuelve a cerrar.
         """
         conteo = self._buscar(id, empresa_id)
-        if conteo.estado != EstadoConteo.CONFIRMADO:
-            cambios = data.model_dump(exclude_unset=True)
-            if not cambios:
-                return construir_conteo_bodega(conteo)
+        cambios = data.model_dump(exclude_unset=True)
+        if not cambios:
+            return construir_conteo_bodega(conteo)
 
-            for campo, valor in cambios.items():
-                setattr(conteo, campo, valor)
-
-            if conteo.cantidad_buena + conteo.cantidad_danada + conteo.cantidad_danada_materia + conteo.cantidad_arreglo == 0:
-                raise ValidationError(
-                    "El conteo quedaría en cero. Si no llegó nada, borra el reporte."
-                )
-            if conteo.fecha < conteo.asignacion.fecha_asignacion:
-                raise ValidationError(
-                    f"La fecha ({conteo.fecha}) es anterior al día en que el corte salió "
-                    f"al taller ({conteo.asignacion.fecha_asignacion}). Revisa el día."
-                )
-            self._cerrar_si_proporcion_completa(
-                conteo.asignacion, empresa_id, conteo.contado_por_id or 0
-            )
-            self.db.commit()
-            return self.obtener(conteo.id, empresa_id)
-
-        raise ValidationError(
-            "Este conteo ya lo confirmó corte y no se puede editar. "
-            "Si quedó mal, avísale a quien lleva el corte."
+        asignacion = self.asignacion_repo.get_by_id_bloqueando(
+            conteo.asignacion_id, empresa_id
         )
+        if asignacion is None:
+            raise NotFoundError("No encontramos ese envío a taller")
+
+        nuevas_buenas = cambios.get("cantidad_buena", conteo.cantidad_buena)
+        if conteo.estado == EstadoConteo.CONFIRMADO and nuevas_buenas < conteo.cantidad_buena:
+            self._asegurar_disponible(
+                asignacion.lote_id, empresa_id, conteo.cantidad_buena - nuevas_buenas
+            )
+
+        if conteo.estado == EstadoConteo.CONFIRMADO:
+            deshacer_aplicacion(self.db, conteo, asignacion, empresa_id)
+
+        for campo, valor in cambios.items():
+            setattr(conteo, campo, valor)
+
+        if (
+            conteo.cantidad_buena
+            + conteo.cantidad_danada
+            + conteo.cantidad_danada_materia
+            + conteo.cantidad_arreglo
+            == 0
+        ):
+            raise ValidationError(
+                "El conteo quedaría en cero. Si no llegó nada, borra el reporte."
+            )
+        if conteo.fecha < asignacion.fecha_asignacion:
+            raise ValidationError(
+                f"La fecha ({conteo.fecha}) es anterior al día en que el corte salió "
+                f"al taller ({asignacion.fecha_asignacion}). Revisa el día."
+            )
+        self._aplicar_conteos(asignacion, empresa_id, conteo.contado_por_id or 0)
+        self.db.commit()
+        return self.obtener(conteo.id, empresa_id)
 
     def eliminar(self, id: int, empresa_id: int) -> None:
         """Borra un reporte que nunca debió existir (bulto equivocado)."""
         conteo = self._buscar(id, empresa_id)
+        asignacion = self.asignacion_repo.get_by_id_bloqueando(
+            conteo.asignacion_id, empresa_id
+        )
+        if asignacion is None:
+            raise NotFoundError("No encontramos ese envío a taller")
         if conteo.estado == EstadoConteo.CONFIRMADO:
-            raise ValidationError(
-                "Este conteo ya lo confirmó corte y no se puede borrar. "
-                "Si quedó mal, avísale a quien lleva el corte."
-            )
+            if conteo.cantidad_buena > 0:
+                self._asegurar_disponible(
+                    asignacion.lote_id, empresa_id, conteo.cantidad_buena
+                )
+            deshacer_aplicacion(self.db, conteo, asignacion, empresa_id)
         self.db.delete(conteo)
         self.db.commit()
 
@@ -267,26 +287,54 @@ class RecepcionBodegaService:
             )
         return asignacion
 
+    def _aplicar_conteos(self, asignacion, empresa_id: int, usuario_id: int) -> None:
+        """Aplica los reportes que todavía están sueltos.
+
+        En el flujo nuevo (capas) espera a que la proporción esté completa.
+        En el viejo, cada tanda se aplica al anotarla: corte ya no confirma.
+        """
+        lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
+        if lote is not None and lote.es_por_proporciones:
+            self._cerrar_si_proporcion_completa(asignacion, empresa_id, usuario_id)
+            return
+        bloqueada = self.asignacion_repo.get_by_id_bloqueando(asignacion.id, empresa_id)
+        if bloqueada is None:
+            return
+        for conteo in self.repo.listar_de_asignacion(asignacion.id, empresa_id):
+            if conteo.estado == EstadoConteo.REPORTADO:
+                aplicar_confirmacion(
+                    self.db,
+                    conteo,
+                    bloqueada,
+                    empresa_id,
+                    usuario_id,
+                    ignorar_tope=True,
+                )
+
     def _cerrar_si_proporcion_completa(
         self, asignacion, empresa_id: int, usuario_id: int
     ) -> None:
-        """En el flujo nuevo, Laura cuenta y al completar la proporción se
-        cierra sola. El flujo viejo (sin capas_color) sigue pidiendo que corte
-        confirme, para no romper el front que aún está en producción."""
-        lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
-        if lote is None or not lote.es_por_proporciones:
-            return
+        """Laura cuenta y al completar la proporción se cierra sola."""
         conteos = self.repo.listar_de_asignacion(asignacion.id, empresa_id)
         if not proporcion_completa(conteos, asignacion):
             return
         bloqueada = self.asignacion_repo.get_by_id_bloqueando(asignacion.id, empresa_id)
-        if bloqueada is None or bloqueada.estado == EstadoAsignacion.ENTREGADO_COMPLETO:
+        if bloqueada is None:
             return
         for conteo in conteos:
             if conteo.estado == EstadoConteo.REPORTADO:
                 aplicar_confirmacion(
                     self.db, conteo, bloqueada, empresa_id, usuario_id, ignorar_tope=True
                 )
+
+    def _asegurar_disponible(self, lote_id: int, empresa_id: int, bajas: int) -> None:
+        listo = self.venta_repo.devuelto_de(lote_id, empresa_id)
+        salido = self.venta_repo.vendido_de(lote_id, empresa_id)
+        if bajas > max(0, listo - salido):
+            raise ValidationError(
+                "Esas unidades ya salieron. No se puede bajar el conteo por debajo "
+                "de lo que ya se despachó."
+            )
 
     def _buscar(self, id: int, empresa_id: int) -> ConteoRecepcion:
         conteo = self.repo.obtener_con_contexto(id, empresa_id)
