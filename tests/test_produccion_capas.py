@@ -18,7 +18,7 @@ from app.models.enums import EstadoAsignacion, EstadoConteo, RolUsuario
 from app.models.taller import Taller
 from app.models.tipo_producto import TipoProducto
 from app.models.usuario import Usuario
-from app.schemas.asignacion_taller import AsignacionTallerCreate
+from app.schemas.asignacion_taller import AsignacionCorteCreate, AsignacionTallerCreate
 from app.schemas.corte import (
     ColorDeCorteCreate,
     CorteCreate,
@@ -214,6 +214,91 @@ def test_una_proporcion_a_cada_taller(
 
     assert a.cantidad_asignada == 20
     assert b.cantidad_asignada == 20
+
+
+def test_se_envia_la_proporcion_completa_del_corte(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller
+):
+    """20 negro y 30 blanco de la misma proporción salen juntos al taller."""
+    corte = _tendido(db, empresa, leguins)
+    envio = AsignacionTallerService(db).crear_por_corte(
+        empresa.id,
+        AsignacionCorteCreate(
+            corte_id=corte.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+        ),
+    )
+
+    por_color = {
+        next(l.color for l in corte.lineas if l.lote_id == a.lote_id): a.cantidad_asignada
+        for a in envio.asignaciones
+    }
+    assert por_color == {"Negro": 20, "Blanco": 30}
+    assert envio.unidades == 50
+
+
+def test_una_proporcion_del_corte_a_cada_taller(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller
+):
+    otro = Taller(
+        empresa_id=empresa.id, nombre="Taller B", numero_taller="T-002", telefono="3000000002"
+    )
+    db.add(otro)
+    db.commit()
+    db.refresh(otro)
+
+    corte = _tendido(db, empresa, leguins)
+    servicio = AsignacionTallerService(db)
+    a = servicio.crear_por_corte(
+        empresa.id,
+        AsignacionCorteCreate(
+            corte_id=corte.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+        ),
+    )
+    b = servicio.crear_por_corte(
+        empresa.id,
+        AsignacionCorteCreate(
+            corte_id=corte.id, taller_id=otro.id, proporciones=1, fecha_asignacion=HOY
+        ),
+    )
+
+    assert a.unidades == 50
+    assert b.unidades == 50
+    assert {x.taller.id for x in a.asignaciones} == {taller.id}
+    assert {x.taller.id for x in b.asignaciones} == {otro.id}
+
+
+def test_no_se_puede_enviar_mas_proporciones_completas_de_las_que_hay(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller
+):
+    corte = _tendido(db, empresa, leguins)
+    with pytest.raises(ValidationError):
+        AsignacionTallerService(db).crear_por_corte(
+            empresa.id,
+            AsignacionCorteCreate(
+                corte_id=corte.id, taller_id=taller.id, proporciones=3, fecha_asignacion=HOY
+            ),
+        )
+
+
+def test_la_ficha_del_corte_lista_todos_los_colores(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller
+):
+    corte = _tendido(db, empresa, leguins)
+    envio = AsignacionTallerService(db).crear_por_corte(
+        empresa.id,
+        AsignacionCorteCreate(
+            corte_id=corte.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+        ),
+    )
+
+    servicio = AsignacionTallerService(db)
+    pdf = servicio.ficha_pdf(envio.asignaciones[0].id, empresa.id)
+    hermanas = servicio._asignaciones_del_mismo_envio(
+        servicio.obtener(envio.asignaciones[0].id, empresa.id), empresa.id
+    )
+    assert pdf.startswith(b"%PDF-")
+    assert len(hermanas) == 2
+    assert {a.lote_id for a in hermanas} == {l.lote_id for l in corte.lineas}
 
 
 def test_la_ficha_es_un_pdf(

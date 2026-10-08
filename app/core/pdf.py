@@ -169,6 +169,46 @@ def _tabla_detalle(filas: list[tuple[str, str]]) -> Table:
     return tabla
 
 
+def _tabla_contenido(
+    lineas: list[tuple[str, str | None, int]],
+) -> Table:
+    """Prenda, color y unidades de la proporción completa."""
+    encabezado = [
+        Paragraph("PRENDA", _estilo("h", fontSize=8, textColor=GRIS_SUAVE)),
+        Paragraph("COLOR", _estilo("h", fontSize=8, textColor=GRIS_SUAVE)),
+        Paragraph("UNIDADES", _estilo("h", fontSize=8, textColor=GRIS_SUAVE, alignment=TA_RIGHT)),
+    ]
+    filas = [encabezado]
+    for producto, color, cantidad in lineas:
+        filas.append(
+            [
+                Paragraph(_texto(producto), _estilo("p", fontName="Helvetica-Bold", fontSize=10)),
+                Paragraph(_texto(color or "—"), _estilo("c", fontSize=10)),
+                Paragraph(
+                    f"{cantidad:,}".replace(",", "."),
+                    _estilo("u", fontName="Helvetica-Bold", fontSize=10, alignment=TA_RIGHT),
+                ),
+            ]
+        )
+    tabla = Table(filas, colWidths=[_ANCHO_UTIL * 0.46, _ANCHO_UTIL * 0.32, _ANCHO_UTIL * 0.22])
+    tabla.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("BACKGROUND", (0, 0), (-1, 0), GRIS_FONDO),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, GRIS_FONDO]),
+                ("BOX", (0, 0), (-1, -1), 0.75, BORDE),
+                ("LINEBELOW", (0, 0), (-1, -2), 0.4, BORDE),
+            ]
+        )
+    )
+    return tabla
+
+
 def generar_ficha_tecnica(
     *,
     empresa_nombre: str,
@@ -182,6 +222,7 @@ def generar_ficha_tecnica(
     asignacion_id: int,
     corte: str | None = None,
     color: str | None = None,
+    lineas: list[tuple[str, str | None, int]] | None = None,
 ) -> bytes:
     """
     Ficha técnica que se le manda al taller cuando se le asigna un lote: qué
@@ -202,22 +243,26 @@ def generar_ficha_tecnica(
         author=empresa_nombre,
     )
 
-    # El taller busca el bulto por el corte y el color, no por un id interno.
+    # El taller busca el bulto por el corte, no por un id interno.
     # "N.º de lote 17" no le dice nada a nadie en la planta; "Corte 07 · 12 sep"
     # es como se nombra de verdad. El id se conserva al final porque sigue
     # siendo lo que identifica la fila si hay que rastrear algo.
-    detalle = [
-        ("Producto", tipo_producto_nombre),
-        ("Referencia", tipo_producto_referencia),
-    ]
+    contenido = lineas or [(tipo_producto_nombre, color, cantidad_asignada)]
+    varias = len(contenido) > 1
+    detalle: list[tuple[str, str]] = []
     if corte:
         detalle.append(("Corte", corte))
-    if color:
-        detalle.append(("Color", color))
-    detalle += [
-        ("N.º de asignación", str(asignacion_id)),
-        ("N.º de lote", str(lote_id)),
-    ]
+    if not varias:
+        detalle += [
+            ("Producto", tipo_producto_nombre),
+            ("Referencia", tipo_producto_referencia),
+        ]
+        if color:
+            detalle.append(("Color", color))
+        detalle += [
+            ("N.º de asignación", str(asignacion_id)),
+            ("N.º de lote", str(lote_id)),
+        ]
 
     generado = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     pie = Paragraph(
@@ -227,19 +272,23 @@ def generar_ficha_tecnica(
         _estilo("pie", fontSize=8, textColor=GRIS_SUAVE, leading=11, alignment=TA_CENTER),
     )
 
-    documento.build(
-        [
-            _encabezado(empresa_nombre),
-            Spacer(1, 22),
-            _bloque_destinatario(taller_nombre, taller_numero),
-            Spacer(1, 16),
-            # KeepTogether evita que el dato principal quede huérfano si algún
-            # día la ficha crece y se parte en dos páginas.
-            KeepTogether(_destacado_cantidad(cantidad_asignada, fecha_asignacion)),
-            Spacer(1, 18),
-            _tabla_detalle(detalle),
-            Spacer(1, 28),
-            pie,
-        ]
-    )
+    bloques: list = [
+        _encabezado(empresa_nombre),
+        Spacer(1, 22),
+        _bloque_destinatario(taller_nombre, taller_numero),
+        Spacer(1, 16),
+        # KeepTogether evita que el dato principal quede huérfano si algún
+        # día la ficha crece y se parte en dos páginas.
+        KeepTogether(_destacado_cantidad(cantidad_asignada, fecha_asignacion)),
+        Spacer(1, 18),
+    ]
+    if varias:
+        bloques += [_tabla_contenido(contenido), Spacer(1, 14)]
+    if detalle:
+        bloques += [_tabla_detalle(detalle), Spacer(1, 28)]
+    else:
+        bloques.append(Spacer(1, 28))
+    bloques.append(pie)
+
+    documento.build(bloques)
     return buffer.getvalue()

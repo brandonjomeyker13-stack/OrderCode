@@ -37,3 +37,4 @@ class LoteConDisponibilidad(LoteOut):
     #: no hay forma de saber cuál es cuál.
     color: str | None = None
     corte: str | None = None
+    corte_id: int | None = None

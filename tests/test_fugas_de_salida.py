@@ -115,6 +115,7 @@ SUPERFICIE_PUBLICADA = {
             "estado",
             "created_at",
             "updated_at",
+            "corte_id",
         },
     ),
     # Los dos lados de la recepción. La gracia de tenerlos aquí juntos es que

@@ -15,13 +15,15 @@ from app.repositories.lote_repository import LoteRepository
 from app.repositories.notificacion_repository import NotificacionRepository
 from app.repositories.taller_repository import TallerRepository
 from app.schemas.asignacion_taller import (
+    AsignacionCorteCreate,
     AsignacionTallerCreate,
     AsignacionTallerOut,
     AsignacionTallerRegistrarDevolucion,
     AsignacionTallerUpdate,
+    EnvioCorteOut,
 )
 from app.schemas.filtros import FiltrosAsignacion
-from app.services.corte_service import etiqueta_de
+from app.services.corte_service import CorteRepository, etiqueta_de
 from app.services.notificacion_taller_service import notificar_asignacion
 
 # Identifican la operación ante el registro de Idempotency-Key. Son
@@ -29,6 +31,7 @@ from app.services.notificacion_taller_service import notificar_asignacion
 # se RESUELVE tienen que coincidir exactamente: si se separan, la clave deja
 # de reconocerse y la operación se repite.
 RUTA_CREAR = "POST /asignaciones"
+RUTA_CREAR_CORTE = "POST /asignaciones/por-corte"
 RUTA_DEVOLUCION = "POST /asignaciones/{id}/devolucion"
 
 
@@ -193,6 +196,107 @@ class AsignacionTallerService:
 
         self.db.refresh(asignacion)
         return self._con_merma(asignacion, empresa_id)
+
+    def crear_por_corte(
+        self, empresa_id: int, data: AsignacionCorteCreate, idempotency_key: str | None = None
+    ) -> EnvioCorteOut:
+        """Manda N proporciones completas: todas las prendas y todos los colores.
+
+        20 rojo y 50 verde de una proporción salen juntos al mismo taller.
+        Un corte puede mandar una proporción a un taller y la otra a otro.
+        """
+        recurso_id = resolver_recurso_previo(
+            self.db, empresa_id, idempotency_key, "asignacion", RUTA_CREAR_CORTE
+        )
+        if recurso_id is not None:
+            return self._envio_desde(recurso_id, empresa_id)
+
+        if CorteRepository(self.db).obtener(data.corte_id, empresa_id) is None:
+            raise NotFoundError("Corte no encontrado")
+
+        taller = self.taller_repo.get_by_id(data.taller_id, empresa_id)
+        if taller is None:
+            raise NotFoundError("Taller no encontrado")
+        if not taller.activo:
+            raise ValidationError("El taller seleccionado está inactivo")
+
+        lotes = self.lote_repo.listar_por_corte(data.corte_id, empresa_id, bloquear=True)
+        if not lotes:
+            raise ValidationError("Este corte no tiene líneas para enviar")
+        if any(not lote.es_por_proporciones for lote in lotes):
+            raise ValidationError("Este corte no se envía por proporciones completas")
+
+        asignados = self.lote_repo.asignado_por_lote([lote.id for lote in lotes], empresa_id)
+        quedan = []
+        for lote in lotes:
+            disponible = lote.cantidad_total - asignados.get(lote.id, 0)
+            quedan.append(disponible // lote.capas_color)
+        maximo = min(quedan)
+        if maximo <= 0:
+            raise ValidationError("No quedan proporciones completas para enviar")
+        if data.proporciones > maximo:
+            raise ValidationError(
+                f"Solo quedan {maximo} proporciones completas en este corte"
+            )
+
+        creadas: list[AsignacionTaller] = []
+        for lote in lotes:
+            asignacion = self.repo.create(
+                AsignacionTaller(
+                    empresa_id=empresa_id,
+                    estado=EstadoAsignacion.ASIGNADO,
+                    lote_id=lote.id,
+                    taller_id=data.taller_id,
+                    cantidad_asignada=data.proporciones * lote.capas_color,
+                    fecha_asignacion=data.fecha_asignacion,
+                )
+            )
+            if lote.estado == EstadoLote.PENDIENTE_ASIGNACION:
+                lote.estado = EstadoLote.ASIGNADO_A_TALLER
+            creadas.append(asignacion)
+
+        if not self._confirmar_con_idempotencia(
+            empresa_id, idempotency_key, RUTA_CREAR_CORTE, "asignacion", creadas[0].id
+        ):
+            recurso_id = resolver_recurso_previo(
+                self.db, empresa_id, idempotency_key, "asignacion", RUTA_CREAR_CORTE
+            )
+            if recurso_id is not None:
+                return self._envio_desde(recurso_id, empresa_id)
+            raise ValidationError("No se pudo completar la asignación, intenta de nuevo")
+
+        for asignacion in creadas:
+            self.db.refresh(asignacion)
+        return EnvioCorteOut(
+            asignaciones=self._lista_con_merma(creadas, empresa_id),
+            unidades=sum(a.cantidad_asignada for a in creadas),
+        )
+
+    def _envio_desde(self, asignacion_id: int, empresa_id: int) -> EnvioCorteOut:
+        asignacion = self.obtener(asignacion_id, empresa_id)
+        hermanas = self._asignaciones_del_mismo_envio(asignacion, empresa_id)
+        return EnvioCorteOut(
+            asignaciones=self._lista_con_merma(hermanas, empresa_id),
+            unidades=sum(a.cantidad_asignada for a in hermanas),
+        )
+
+    def _asignaciones_del_mismo_envio(
+        self, asignacion: AsignacionTaller, empresa_id: int
+    ) -> list[AsignacionTaller]:
+        """Las filas que salieron juntas: misma proporción completa del corte."""
+        lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
+        if lote is None or lote.corte_id is None:
+            return [asignacion]
+        lineas = self.lote_repo.listar_por_corte(lote.corte_id, empresa_id)
+        hermanas = self.repo.listar_envio_corte(
+            empresa_id,
+            corte_id=lote.corte_id,
+            taller_id=asignacion.taller_id,
+            fecha=asignacion.fecha_asignacion,
+            asignacion_id=asignacion.id,
+            lineas_del_corte=len(lineas),
+        )
+        return hermanas or [asignacion]
 
     def _cantidad_a_asignar(self, lote, data: AsignacionTallerCreate, disponible: int) -> int:
         """En el flujo nuevo solo salen proporciones enteras.
@@ -459,18 +563,30 @@ class AsignacionTallerService:
         asignacion = self.obtener(id, empresa_id)
         lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
         empresa = self.empresa_repo.get_by_id(empresa_id)
+        hermanas = self._asignaciones_del_mismo_envio(asignacion, empresa_id)
+        lineas = []
+        for hermana in hermanas:
+            linea = self.lote_repo.get_by_id(hermana.lote_id, empresa_id)
+            lineas.append(
+                (
+                    linea.tipo_producto.nombre,
+                    linea.nombre_color,
+                    hermana.cantidad_asignada,
+                )
+            )
         return generar_ficha_tecnica(
             empresa_nombre=empresa.nombre,
             taller_nombre=asignacion.taller.nombre,
             taller_numero=asignacion.taller.numero_taller,
             tipo_producto_nombre=lote.tipo_producto.nombre,
             tipo_producto_referencia=lote.tipo_producto.referencia,
-            cantidad_asignada=asignacion.cantidad_asignada,
+            cantidad_asignada=sum(h.cantidad_asignada for h in hermanas),
             fecha_asignacion=asignacion.fecha_asignacion,
             lote_id=lote.id,
             asignacion_id=asignacion.id,
             corte=etiqueta_de(lote.corte) if lote.corte else None,
-            color=lote.nombre_color,
+            color=lote.nombre_color if len(hermanas) == 1 else None,
+            lineas=lineas if len(lineas) > 1 else None,
         )
 
     def reenviar_notificacion(self, id: int, empresa_id: int) -> AsignacionTallerOut:

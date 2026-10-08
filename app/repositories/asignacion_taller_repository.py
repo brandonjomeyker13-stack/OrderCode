@@ -160,6 +160,44 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def listar_envio_corte(
+        self,
+        empresa_id: int,
+        *,
+        corte_id: int,
+        taller_id: int,
+        fecha: date,
+        asignacion_id: int,
+        lineas_del_corte: int,
+    ) -> list[AsignacionTaller]:
+        """Las filas de una misma proporción completa.
+
+        Un envío por corte crea una asignación por línea, ids seguidos. Si
+        este id no cae en un bloque de ese tamaño, es un envío viejo de una
+        sola línea y se devuelve sola.
+        """
+        stmt = (
+            select(AsignacionTaller)
+            .join(Lote, Lote.id == AsignacionTaller.lote_id)
+            .options(*self._PRECARGA_RELACIONES)
+            .where(
+                AsignacionTaller.empresa_id == empresa_id,
+                AsignacionTaller.taller_id == taller_id,
+                AsignacionTaller.fecha_asignacion == fecha,
+                Lote.corte_id == corte_id,
+            )
+            .order_by(AsignacionTaller.id.asc())
+        )
+        candidatas = list(self.db.execute(stmt).scalars().all())
+        n = lineas_del_corte
+        if n <= 1:
+            return [a for a in candidatas if a.id == asignacion_id]
+        for i in range(0, len(candidatas) - n + 1, n):
+            bloque = candidatas[i : i + n]
+            if any(a.id == asignacion_id for a in bloque):
+                return bloque
+        return [a for a in candidatas if a.id == asignacion_id]
+
     def listar_por_lote(self, lote_id: int, empresa_id: int) -> list[AsignacionTaller]:
         stmt = (
             select(AsignacionTaller)

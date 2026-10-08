@@ -75,6 +75,23 @@ class LoteRepository(BaseRepository[Lote]):
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def listar_por_corte(self, corte_id: int, empresa_id: int, *, bloquear: bool = False) -> list[Lote]:
+        """Todas las líneas de un corte. Con lock al mandar la proporción
+        completa: negro y verde salen juntas, no una a cada taller."""
+        stmt = (
+            select(Lote)
+            .options(
+                selectinload(Lote.tipo_producto),
+                selectinload(Lote.color),
+                selectinload(Lote.corte),
+            )
+            .where(Lote.corte_id == corte_id, Lote.empresa_id == empresa_id)
+            .order_by(Lote.id)
+        )
+        if bloquear:
+            stmt = stmt.with_for_update()
+        return list(self.db.execute(stmt).scalars().all())
+
     def get_by_id_bloqueando(self, id: int, empresa_id: int) -> Lote | None:
         """Igual que get_by_id pero tomando un lock de fila (SELECT ... FOR
         UPDATE). Se usa antes de validar cuánto queda disponible: sin el lock,

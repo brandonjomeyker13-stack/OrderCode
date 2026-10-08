@@ -9,6 +9,15 @@ from app.schemas.common import MAX_UNIDADES, TimestampSchema
 from app.schemas.taller import TallerOut
 
 
+class AsignacionCorteCreate(BaseModel):
+    """Una proporción completa del corte: todas las prendas y todos los colores."""
+
+    corte_id: int
+    taller_id: int
+    proporciones: int = Field(gt=0, le=1000)
+    fecha_asignacion: date
+
+
 class AsignacionTallerCreate(BaseModel):
     lote_id: int
     taller_id: int
@@ -77,3 +86,10 @@ class AsignacionTallerOut(TimestampSchema):
     canal_notificacion: CanalNotificacion | None
     # Cada entrega parcial por separado, de la más vieja a la más reciente.
     devoluciones: list[DevolucionOut] = []
+
+
+class EnvioCorteOut(BaseModel):
+    """Lo que salió de un envío por corte: una fila por línea, juntas."""
+
+    asignaciones: list[AsignacionTallerOut]
+    unidades: int

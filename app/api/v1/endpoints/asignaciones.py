@@ -10,10 +10,12 @@ from app.db.session import get_db
 from app.models.enums import EstadoAsignacion
 from app.models.usuario import Usuario
 from app.schemas.asignacion_taller import (
+    AsignacionCorteCreate,
     AsignacionTallerCreate,
     AsignacionTallerOut,
     AsignacionTallerRegistrarDevolucion,
     AsignacionTallerUpdate,
+    EnvioCorteOut,
 )
 from app.schemas.common import PaginationParams
 from app.schemas.filtros import FiltrosAsignacion
@@ -37,6 +39,22 @@ def crear_asignacion(
     ),
 ):
     return AsignacionTallerService(db).crear(empresa_id, data, idempotency_key)
+
+
+@router.post("/por-corte", response_model=EnvioCorteOut, status_code=201)
+def crear_asignacion_por_corte(
+    data: AsignacionCorteCreate,
+    empresa_id: int = Depends(get_empresa_id),
+    _puesto: Usuario = Depends(requiere_corte),
+    db: Session = Depends(get_db),
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        max_length=255,
+    ),
+):
+    """Una proporción completa del corte: todas las prendas y todos los colores."""
+    return AsignacionTallerService(db).crear_por_corte(empresa_id, data, idempotency_key)
 
 
 @router.get("/{asignacion_id}", response_model=AsignacionTallerOut)

@@ -44,6 +44,7 @@ class LoteService:
             cantidad_disponible=lote.cantidad_total - asignado,
             color=lote.nombre_color,
             corte=etiqueta_de(lote.corte) if lote.corte else None,
+            corte_id=lote.corte_id,
         )
 
     def _con_disponibilidad(self, lote: Lote, empresa_id: int) -> LoteConDisponibilidad:

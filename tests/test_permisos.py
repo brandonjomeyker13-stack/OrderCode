@@ -54,6 +54,7 @@ MATRIZ = {
     ("/api/v1/cortes/{corte_id}", "GET"): puede_ver_cantidades,
     ("/api/v1/colores", "POST"): requiere_corte,
     ("/api/v1/asignaciones", "POST"): requiere_corte,
+    ("/api/v1/asignaciones/por-corte", "POST"): requiere_corte,
     ("/api/v1/asignaciones/por-lote/{lote_id}", "GET"): requiere_corte,
     ("/api/v1/asignaciones/{asignacion_id}/reenviar-notificacion", "POST"): requiere_corte,
     ("/api/v1/talleres", "POST"): requiere_corte,
