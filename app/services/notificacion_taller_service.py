@@ -5,7 +5,7 @@ from xml.sax.saxutils import escape
 from sqlalchemy.orm import Session
 
 from app.core.email import enviar_email
-from app.core.pdf import generar_ficha_tecnica
+from app.core.pdf import generar_ficha_tecnica, prendas_con_colores
 from app.services.corte_service import etiqueta_de
 from app.core.whatsapp import enviar_documento_whatsapp
 from app.models.asignacion_taller import AsignacionTaller
@@ -79,14 +79,10 @@ def _intentar_notificar(
             empresa_nombre=empresa_nombre,
             taller_nombre=taller.nombre,
             taller_numero=taller.numero_taller,
-            tipo_producto_nombre=lote.tipo_producto.nombre,
-            tipo_producto_referencia=lote.tipo_producto.referencia,
-            cantidad_asignada=asignacion.cantidad_asignada,
             fecha_asignacion=asignacion.fecha_asignacion,
-            lote_id=lote.id,
             asignacion_id=asignacion.id,
+            prendas=prendas_con_colores([(lote.tipo_producto.nombre, lote.nombre_color)]),
             corte=etiqueta_de(lote.corte) if lote.corte else None,
-            color=lote.nombre_color,
         )
     except Exception as exc:
         logger.exception(

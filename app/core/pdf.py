@@ -27,6 +27,12 @@ BORDE = colors.HexColor("#D1D5DB")
 
 _ANCHO_UTIL = letter[0] - 4 * cm
 
+DIAS = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
+MESES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
 
 def _estilo(nombre: str, **kwargs) -> ParagraphStyle:
     base = {"fontName": "Helvetica", "fontSize": 10, "textColor": GRIS_TEXTO, "leading": 14}
@@ -42,6 +48,11 @@ def _texto(valor: str) -> str:
     return escape(str(valor))
 
 
+def _fecha_larga(d: date) -> str:
+    """En español sin depender del locale del servidor: "Jueves 8 de octubre de 2026"."""
+    return f"{DIAS[d.weekday()]} {d.day} de {MESES[d.month - 1]} de {d.year}"
+
+
 def _encabezado(empresa_nombre: str) -> Table:
     """Barra superior con el nombre de la empresa y el tipo de documento."""
     izquierda = Paragraph(
@@ -49,7 +60,7 @@ def _encabezado(empresa_nombre: str) -> Table:
         _estilo("empresa", fontName="Helvetica-Bold", fontSize=13, textColor=colors.white),
     )
     derecha = Paragraph(
-        "FICHA TÉCNICA",
+        "FICHA DE ENTREGA",
         _estilo(
             "tipo_doc",
             fontName="Helvetica-Bold",
@@ -74,17 +85,16 @@ def _encabezado(empresa_nombre: str) -> Table:
     return tabla
 
 
-def _bloque_destinatario(taller_nombre: str, taller_numero: str) -> Table:
+def _bloque(etiqueta: str, valor: str, detalle: str | None = None) -> Table:
     contenido = [
-        [Paragraph("ENTREGADO A", _estilo("lbl", fontSize=8, textColor=GRIS_SUAVE))],
-        [
-            Paragraph(
-                _texto(taller_nombre), _estilo("taller", fontName="Helvetica-Bold", fontSize=15, leading=19)
-            )
-        ],
-        [Paragraph(f"Taller N.º {_texto(taller_numero)}", _estilo("num", fontSize=10, textColor=GRIS_SUAVE))],
+        [Paragraph(etiqueta, _estilo("lbl", fontSize=8, textColor=GRIS_SUAVE))],
+        [Paragraph(_texto(valor), _estilo("val", fontName="Helvetica-Bold", fontSize=15, leading=19))],
     ]
-    tabla = Table(contenido, colWidths=[_ANCHO_UTIL])
+    if detalle:
+        contenido.append(
+            [Paragraph(_texto(detalle), _estilo("det", fontSize=10, textColor=GRIS_SUAVE))]
+        )
+    tabla = Table(contenido, colWidths=[_ANCHO_UTIL / 2 - 6])
     tabla.setStyle(
         TableStyle(
             [
@@ -98,58 +108,40 @@ def _bloque_destinatario(taller_nombre: str, taller_numero: str) -> Table:
     return tabla
 
 
-def _destacado_cantidad(cantidad: int, fecha_asignacion: date) -> Table:
-    """La cantidad es EL dato de esta ficha -- si el taller solo mira una cosa,
-    tiene que ser cuántas unidades recibió. Por eso va en grande y aislada."""
-    celda_cantidad = [
-        Paragraph("CANTIDAD ASIGNADA", _estilo("lbl_cant", fontSize=8, textColor=GRIS_SUAVE, alignment=TA_CENTER)),
-        Paragraph(
-            f"{cantidad:,}".replace(",", "."),
-            _estilo("cant", fontName="Helvetica-Bold", fontSize=30, textColor=AZUL, leading=34, alignment=TA_CENTER),
-        ),
-        Paragraph("unidades", _estilo("uds", fontSize=9, textColor=GRIS_SUAVE, alignment=TA_CENTER)),
+def _quien_y_cuando(taller_nombre: str, taller_numero: str, fecha: date) -> Table:
+    fila = [
+        _bloque("ENTREGADO A", taller_nombre, f"Taller N.º {taller_numero}"),
+        _bloque("FECHA DE ENTREGA", _fecha_larga(fecha)),
     ]
-    celda_fecha = [
-        Paragraph("FECHA DE ENTREGA", _estilo("lbl_fecha", fontSize=8, textColor=GRIS_SUAVE, alignment=TA_CENTER)),
-        Paragraph(
-            fecha_asignacion.strftime("%d/%m/%Y"),
-            _estilo("fecha", fontName="Helvetica-Bold", fontSize=18, leading=26, alignment=TA_CENTER),
-        ),
-        Paragraph(
-            fecha_asignacion.strftime("%A").capitalize(),
-            _estilo("dia", fontSize=9, textColor=GRIS_SUAVE, alignment=TA_CENTER),
-        ),
-    ]
-    interna_izq = Table([[p] for p in celda_cantidad], colWidths=[_ANCHO_UTIL * 0.5 - 1])
-    interna_der = Table([[p] for p in celda_fecha], colWidths=[_ANCHO_UTIL * 0.5 - 1])
-    for t in (interna_izq, interna_der):
-        t.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
-
-    tabla = Table([[interna_izq, interna_der]], colWidths=[_ANCHO_UTIL * 0.5, _ANCHO_UTIL * 0.5])
+    tabla = Table([fila], colWidths=[_ANCHO_UTIL / 2, _ANCHO_UTIL / 2])
     tabla.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, -1), GRIS_FONDO),
-                ("BOX", (0, 0), (-1, -1), 0.75, BORDE),
-                ("LINEAFTER", (0, 0), (0, 0), 0.75, BORDE),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 14),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
             ]
         )
     )
     return tabla
 
 
-def _tabla_detalle(filas: list[tuple[str, str]]) -> Table:
-    contenido = [
+def _que_se_entrega(corte: str | None, prendas: list[tuple[str, list[str]]]) -> Table:
+    """Una fila por prenda con sus colores. Sin cantidades: eso lo cuenta bodega."""
+    filas = [
         [
-            Paragraph(_texto(etiqueta), _estilo("k", fontSize=9, textColor=GRIS_SUAVE)),
-            Paragraph(_texto(valor), _estilo("v", fontName="Helvetica-Bold", fontSize=10)),
+            Paragraph("PRENDA", _estilo("h", fontSize=8, textColor=GRIS_SUAVE)),
+            Paragraph("COLORES", _estilo("h", fontSize=8, textColor=GRIS_SUAVE)),
         ]
-        for etiqueta, valor in filas
     ]
-    tabla = Table(contenido, colWidths=[_ANCHO_UTIL * 0.4, _ANCHO_UTIL * 0.6])
+    for prenda, colores_prenda in prendas:
+        filas.append(
+            [
+                Paragraph(_texto(prenda), _estilo("p", fontName="Helvetica-Bold", fontSize=11)),
+                Paragraph(_texto(", ".join(colores_prenda) or "—"), _estilo("c", fontSize=11)),
+            ]
+        )
+    tabla = Table(filas, colWidths=[_ANCHO_UTIL * 0.42, _ANCHO_UTIL * 0.58])
     tabla.setStyle(
         TableStyle(
             [
@@ -158,55 +150,39 @@ def _tabla_detalle(filas: list[tuple[str, str]]) -> Table:
                 ("RIGHTPADDING", (0, 0), (-1, -1), 10),
                 ("TOPPADDING", (0, 0), (-1, -1), 8),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                # Franjas alternas: ayudan a no perder el renglón al leer en
-                # una pantalla pequeña.
-                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, GRIS_FONDO]),
+                ("BACKGROUND", (0, 0), (-1, 0), GRIS_FONDO),
                 ("BOX", (0, 0), (-1, -1), 0.75, BORDE),
                 ("LINEBELOW", (0, 0), (-1, -2), 0.4, BORDE),
             ]
         )
     )
-    return tabla
-
-
-def _tabla_contenido(
-    lineas: list[tuple[str, str | None, int]],
-) -> Table:
-    """Prenda, color y unidades de la proporción completa."""
-    encabezado = [
-        Paragraph("PRENDA", _estilo("h", fontSize=8, textColor=GRIS_SUAVE)),
-        Paragraph("COLOR", _estilo("h", fontSize=8, textColor=GRIS_SUAVE)),
-        Paragraph("UNIDADES", _estilo("h", fontSize=8, textColor=GRIS_SUAVE, alignment=TA_RIGHT)),
-    ]
-    filas = [encabezado]
-    for producto, color, cantidad in lineas:
-        filas.append(
-            [
-                Paragraph(_texto(producto), _estilo("p", fontName="Helvetica-Bold", fontSize=10)),
-                Paragraph(_texto(color or "—"), _estilo("c", fontSize=10)),
-                Paragraph(
-                    f"{cantidad:,}".replace(",", "."),
-                    _estilo("u", fontName="Helvetica-Bold", fontSize=10, alignment=TA_RIGHT),
-                ),
-            ]
-        )
-    tabla = Table(filas, colWidths=[_ANCHO_UTIL * 0.46, _ANCHO_UTIL * 0.32, _ANCHO_UTIL * 0.22])
-    tabla.setStyle(
+    titulo = Paragraph(
+        f"QUÉ SE ENTREGA{' · ' + _texto(corte).upper() if corte else ''}",
+        _estilo("t", fontSize=8, textColor=GRIS_SUAVE),
+    )
+    envoltura = Table([[titulo], [tabla]], colWidths=[_ANCHO_UTIL])
+    envoltura.setStyle(
         TableStyle(
             [
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 10),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-                ("BACKGROUND", (0, 0), (-1, 0), GRIS_FONDO),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, GRIS_FONDO]),
-                ("BOX", (0, 0), (-1, -1), 0.75, BORDE),
-                ("LINEBELOW", (0, 0), (-1, -2), 0.4, BORDE),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ]
         )
     )
-    return tabla
+    return envoltura
+
+
+def _firmas() -> Table:
+    linea = "_" * 34
+    celdas = [
+        [
+            Paragraph(f"{linea}<br/>Entrega", _estilo("f", fontSize=9, textColor=GRIS_SUAVE, alignment=TA_CENTER)),
+            Paragraph(f"{linea}<br/>Recibe", _estilo("f", fontSize=9, textColor=GRIS_SUAVE, alignment=TA_CENTER)),
+        ]
+    ]
+    return Table(celdas, colWidths=[_ANCHO_UTIL / 2, _ANCHO_UTIL / 2])
 
 
 def generar_ficha_tecnica(
@@ -214,22 +190,17 @@ def generar_ficha_tecnica(
     empresa_nombre: str,
     taller_nombre: str,
     taller_numero: str,
-    tipo_producto_nombre: str,
-    tipo_producto_referencia: str,
-    cantidad_asignada: int,
     fecha_asignacion: date,
-    lote_id: int,
     asignacion_id: int,
+    prendas: list[tuple[str, list[str]]],
     corte: str | None = None,
-    color: str | None = None,
-    lineas: list[tuple[str, str | None, int]] | None = None,
 ) -> bytes:
     """
-    Ficha técnica que se le manda al taller cuando se le asigna un lote: qué
-    recibe, cuánto y cuándo.
+    La hoja que acompaña el bulto: a quién se entrega, cuándo, de qué corte
+    y qué prendas en qué colores. No lleva cantidades.
 
-    Pensada para leerse en el celular en planta y para imprimirse en blanco y
-    negro: la jerarquía se apoya en el tamaño y el contraste, no en el color.
+    Pensada para imprimirse en blanco y negro: la jerarquía se apoya en el
+    tamaño y el contraste, no en el color.
     """
     buffer = io.BytesIO()
     documento = SimpleDocTemplate(
@@ -239,56 +210,37 @@ def generar_ficha_tecnica(
         rightMargin=2 * cm,
         topMargin=1.8 * cm,
         bottomMargin=1.8 * cm,
-        title=f"Ficha técnica - Asignación {asignacion_id}",
+        title=f"Ficha de entrega - {taller_nombre}",
         author=empresa_nombre,
     )
 
-    # El taller busca el bulto por el corte, no por un id interno.
-    # "N.º de lote 17" no le dice nada a nadie en la planta; "Corte 07 · 12 sep"
-    # es como se nombra de verdad. El id se conserva al final porque sigue
-    # siendo lo que identifica la fila si hay que rastrear algo.
-    contenido = lineas or [(tipo_producto_nombre, color, cantidad_asignada)]
-    varias = len(contenido) > 1
-    detalle: list[tuple[str, str]] = []
-    if corte:
-        detalle.append(("Corte", corte))
-    if not varias:
-        detalle += [
-            ("Producto", tipo_producto_nombre),
-            ("Referencia", tipo_producto_referencia),
-        ]
-        if color:
-            detalle.append(("Color", color))
-        detalle += [
-            ("N.º de asignación", str(asignacion_id)),
-            ("N.º de lote", str(lote_id)),
-        ]
-
     generado = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     pie = Paragraph(
-        f"Documento generado automáticamente el {generado}.<br/>"
-        "Consérvalo como comprobante de lo recibido. Ante cualquier diferencia "
-        f"en la cantidad, repórtala a {_texto(empresa_nombre)} antes de comenzar la producción.",
-        _estilo("pie", fontSize=8, textColor=GRIS_SUAVE, leading=11, alignment=TA_CENTER),
+        f"Generado el {generado} · Ref. {asignacion_id}",
+        _estilo("pie", fontSize=7, textColor=GRIS_SUAVE, leading=10, alignment=TA_CENTER),
     )
 
-    bloques: list = [
-        _encabezado(empresa_nombre),
-        Spacer(1, 22),
-        _bloque_destinatario(taller_nombre, taller_numero),
-        Spacer(1, 16),
-        # KeepTogether evita que el dato principal quede huérfano si algún
-        # día la ficha crece y se parte en dos páginas.
-        KeepTogether(_destacado_cantidad(cantidad_asignada, fecha_asignacion)),
-        Spacer(1, 18),
-    ]
-    if varias:
-        bloques += [_tabla_contenido(contenido), Spacer(1, 14)]
-    if detalle:
-        bloques += [_tabla_detalle(detalle), Spacer(1, 28)]
-    else:
-        bloques.append(Spacer(1, 28))
-    bloques.append(pie)
-
-    documento.build(bloques)
+    documento.build(
+        [
+            _encabezado(empresa_nombre),
+            Spacer(1, 22),
+            _quien_y_cuando(taller_nombre, taller_numero, fecha_asignacion),
+            Spacer(1, 22),
+            KeepTogether(_que_se_entrega(corte, prendas)),
+            Spacer(1, 60),
+            _firmas(),
+            Spacer(1, 28),
+            pie,
+        ]
+    )
     return buffer.getvalue()
+
+
+def prendas_con_colores(lineas: list[tuple[str, str | None]]) -> list[tuple[str, list[str]]]:
+    """[(Leguins, Negro), (Leguins, Blanco)] -> [(Leguins, [Negro, Blanco])], en orden."""
+    agrupado: dict[str, list[str]] = {}
+    for prenda, color in lineas:
+        colores_prenda = agrupado.setdefault(prenda, [])
+        if color and color not in colores_prenda:
+            colores_prenda.append(color)
+    return list(agrupado.items())

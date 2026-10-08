@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.idempotencia import reclamar_clave, resolver_recurso_previo
-from app.core.pdf import generar_ficha_tecnica
+from app.core.pdf import generar_ficha_tecnica, prendas_con_colores
 from app.models.asignacion_taller import AsignacionTaller
 from app.models.devolucion import Devolucion
 from app.models.enums import CanalNotificacion, EstadoAsignacion, EstadoLote
@@ -567,26 +567,15 @@ class AsignacionTallerService:
         lineas = []
         for hermana in hermanas:
             linea = self.lote_repo.get_by_id(hermana.lote_id, empresa_id)
-            lineas.append(
-                (
-                    linea.tipo_producto.nombre,
-                    linea.nombre_color,
-                    hermana.cantidad_asignada,
-                )
-            )
+            lineas.append((linea.tipo_producto.nombre, linea.nombre_color))
         return generar_ficha_tecnica(
             empresa_nombre=empresa.nombre,
             taller_nombre=asignacion.taller.nombre,
             taller_numero=asignacion.taller.numero_taller,
-            tipo_producto_nombre=lote.tipo_producto.nombre,
-            tipo_producto_referencia=lote.tipo_producto.referencia,
-            cantidad_asignada=sum(h.cantidad_asignada for h in hermanas),
             fecha_asignacion=asignacion.fecha_asignacion,
-            lote_id=lote.id,
             asignacion_id=asignacion.id,
+            prendas=prendas_con_colores(lineas),
             corte=etiqueta_de(lote.corte) if lote.corte else None,
-            color=lote.nombre_color if len(hermanas) == 1 else None,
-            lineas=lineas if len(lineas) > 1 else None,
         )
 
     def reenviar_notificacion(self, id: int, empresa_id: int) -> AsignacionTallerOut:
