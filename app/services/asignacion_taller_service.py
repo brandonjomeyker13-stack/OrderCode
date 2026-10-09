@@ -200,10 +200,10 @@ class AsignacionTallerService:
     def crear_por_corte(
         self, empresa_id: int, data: AsignacionCorteCreate, idempotency_key: str | None = None
     ) -> EnvioCorteOut:
-        """Manda N proporciones completas: todas las prendas y todos los colores.
+        """Manda N proporciones de una prenda del corte, con todos sus colores.
 
-        20 rojo y 50 verde de una proporción salen juntos al mismo taller.
-        Un corte puede mandar una proporción a un taller y la otra a otro.
+        20 rojo y 50 verde de una proporción de leguins salen juntos al mismo
+        taller. Los shorts del mismo corte son otra proporción y van aparte.
         """
         recurso_id = resolver_recurso_previo(
             self.db, empresa_id, idempotency_key, "asignacion", RUTA_CREAR_CORTE
@@ -220,11 +220,15 @@ class AsignacionTallerService:
         if not taller.activo:
             raise ValidationError("El taller seleccionado está inactivo")
 
-        lotes = self.lote_repo.listar_por_corte(data.corte_id, empresa_id, bloquear=True)
+        lotes = [
+            lote
+            for lote in self.lote_repo.listar_por_corte(data.corte_id, empresa_id, bloquear=True)
+            if lote.tipo_producto_id == data.tipo_producto_id
+        ]
         if not lotes:
-            raise ValidationError("Este corte no tiene líneas para enviar")
+            raise ValidationError("Este corte no tiene esa prenda")
         if any(not lote.es_por_proporciones for lote in lotes):
-            raise ValidationError("Este corte no se envía por proporciones completas")
+            raise ValidationError("Esta prenda no se envía por proporciones completas")
 
         asignados = self.lote_repo.asignado_por_lote([lote.id for lote in lotes], empresa_id)
         quedan = []
@@ -236,7 +240,7 @@ class AsignacionTallerService:
             raise ValidationError("No quedan proporciones completas para enviar")
         if data.proporciones > maximo:
             raise ValidationError(
-                f"Solo quedan {maximo} proporciones completas en este corte"
+                f"Solo quedan {maximo} proporciones de esta prenda en el corte"
             )
 
         creadas: list[AsignacionTaller] = []
@@ -283,18 +287,23 @@ class AsignacionTallerService:
     def _asignaciones_del_mismo_envio(
         self, asignacion: AsignacionTaller, empresa_id: int
     ) -> list[AsignacionTaller]:
-        """Las filas que salieron juntas: misma proporción completa del corte."""
+        """Las filas que salieron juntas: los colores de una misma prenda."""
         lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
         if lote is None or lote.corte_id is None:
             return [asignacion]
-        lineas = self.lote_repo.listar_por_corte(lote.corte_id, empresa_id)
+        lineas = [
+            l
+            for l in self.lote_repo.listar_por_corte(lote.corte_id, empresa_id)
+            if l.tipo_producto_id == lote.tipo_producto_id
+        ]
         hermanas = self.repo.listar_envio_corte(
             empresa_id,
             corte_id=lote.corte_id,
+            tipo_producto_id=lote.tipo_producto_id,
             taller_id=asignacion.taller_id,
             fecha=asignacion.fecha_asignacion,
             asignacion_id=asignacion.id,
-            lineas_del_corte=len(lineas),
+            lineas_de_la_prenda=len(lineas),
         )
         return hermanas or [asignacion]
 

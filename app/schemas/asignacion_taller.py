@@ -10,9 +10,13 @@ from app.schemas.taller import TallerOut
 
 
 class AsignacionCorteCreate(BaseModel):
-    """Una proporción completa del corte: todas las prendas y todos los colores."""
+    """Proporciones de UNA prenda del corte, con todos sus colores.
+
+    Leguins y shorts son proporciones distintas aunque salgan del mismo tendido.
+    """
 
     corte_id: int
+    tipo_producto_id: int
     taller_id: int
     proporciones: int = Field(gt=0, le=1000)
     fecha_asignacion: date

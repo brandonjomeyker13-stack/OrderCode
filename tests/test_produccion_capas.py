@@ -15,6 +15,7 @@ from app.core.exceptions import ValidationError
 from app.core.security import hash_password
 from app.models.empresa import Empresa
 from app.models.enums import EstadoAsignacion, EstadoConteo, RolUsuario
+from app.models.qr_code import QRCode
 from app.models.taller import Taller
 from app.models.tipo_producto import TipoProducto
 from app.models.usuario import Usuario
@@ -224,7 +225,7 @@ def test_se_envia_la_proporcion_completa_del_corte(
     envio = AsignacionTallerService(db).crear_por_corte(
         empresa.id,
         AsignacionCorteCreate(
-            corte_id=corte.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+            corte_id=corte.id, tipo_producto_id=leguins.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
         ),
     )
 
@@ -251,13 +252,13 @@ def test_una_proporcion_del_corte_a_cada_taller(
     a = servicio.crear_por_corte(
         empresa.id,
         AsignacionCorteCreate(
-            corte_id=corte.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+            corte_id=corte.id, tipo_producto_id=leguins.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
         ),
     )
     b = servicio.crear_por_corte(
         empresa.id,
         AsignacionCorteCreate(
-            corte_id=corte.id, taller_id=otro.id, proporciones=1, fecha_asignacion=HOY
+            corte_id=corte.id, tipo_producto_id=leguins.id, taller_id=otro.id, proporciones=1, fecha_asignacion=HOY
         ),
     )
 
@@ -275,7 +276,7 @@ def test_no_se_puede_enviar_mas_proporciones_completas_de_las_que_hay(
         AsignacionTallerService(db).crear_por_corte(
             empresa.id,
             AsignacionCorteCreate(
-                corte_id=corte.id, taller_id=taller.id, proporciones=3, fecha_asignacion=HOY
+                corte_id=corte.id, tipo_producto_id=leguins.id, taller_id=taller.id, proporciones=3, fecha_asignacion=HOY
             ),
         )
 
@@ -287,7 +288,7 @@ def test_la_ficha_del_corte_lista_todos_los_colores(
     envio = AsignacionTallerService(db).crear_por_corte(
         empresa.id,
         AsignacionCorteCreate(
-            corte_id=corte.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+            corte_id=corte.id, tipo_producto_id=leguins.id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
         ),
     )
 
@@ -299,6 +300,102 @@ def test_la_ficha_del_corte_lista_todos_los_colores(
     assert pdf.startswith(b"%PDF-")
     assert len(hermanas) == 2
     assert {a.lote_id for a in hermanas} == {l.lote_id for l in corte.lineas}
+
+
+def _short(db, empresa) -> TipoProducto:
+    qr = QRCode(empresa_id=empresa.id, token="token-short")
+    db.add(qr)
+    db.flush()
+    short = TipoProducto(
+        empresa_id=empresa.id, nombre="Short", referencia="REF-SHORT", qr_code_id=qr.id
+    )
+    db.add(short)
+    db.commit()
+    db.refresh(short)
+    return short
+
+
+def _tendido_con_dos_prendas(db, empresa, leguins, short):
+    return CorteService(db).crear(
+        empresa.id,
+        CorteCreate(
+            fecha=HOY,
+            capas=50,
+            colores=[
+                ColorDeCorteCreate(nombre="Negro", capas=20),
+                ColorDeCorteCreate(nombre="Blanco", capas=30),
+            ],
+            prendas=[
+                PrendaDeCorteCreate(tipo_producto_id=leguins.id, proporciones=2),
+                PrendaDeCorteCreate(tipo_producto_id=short.id, proporciones=1),
+            ],
+        ),
+    )
+
+
+def test_cada_prenda_del_corte_es_su_propia_proporcion(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller
+):
+    """Leguins y short del mismo tendido no viajan en la misma proporción."""
+    short = _short(db, empresa)
+    corte = _tendido_con_dos_prendas(db, empresa, leguins, short)
+    servicio = AsignacionTallerService(db)
+
+    envio = servicio.crear_por_corte(
+        empresa.id,
+        AsignacionCorteCreate(
+            corte_id=corte.id,
+            tipo_producto_id=short.id,
+            taller_id=taller.id,
+            proporciones=1,
+            fecha_asignacion=HOY,
+        ),
+    )
+
+    lineas_short = {l.lote_id for l in corte.lineas if l.tipo_producto_id == short.id}
+    assert {a.lote_id for a in envio.asignaciones} == lineas_short
+    assert envio.unidades == 50
+
+    hermanas = servicio._asignaciones_del_mismo_envio(
+        servicio.obtener(envio.asignaciones[0].id, empresa.id), empresa.id
+    )
+    assert {a.lote_id for a in hermanas} == lineas_short
+
+    leguins_envio = servicio.crear_por_corte(
+        empresa.id,
+        AsignacionCorteCreate(
+            corte_id=corte.id,
+            tipo_producto_id=leguins.id,
+            taller_id=taller.id,
+            proporciones=2,
+            fecha_asignacion=HOY,
+        ),
+    )
+    assert leguins_envio.unidades == 100
+    hermanas = servicio._asignaciones_del_mismo_envio(
+        servicio.obtener(leguins_envio.asignaciones[0].id, empresa.id), empresa.id
+    )
+    assert {a.lote_id for a in hermanas} == {
+        l.lote_id for l in corte.lineas if l.tipo_producto_id == leguins.id
+    }
+
+
+def test_no_se_puede_enviar_una_prenda_que_no_esta_en_el_corte(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller
+):
+    corte = _tendido(db, empresa, leguins)
+    short = _short(db, empresa)
+    with pytest.raises(ValidationError):
+        AsignacionTallerService(db).crear_por_corte(
+            empresa.id,
+            AsignacionCorteCreate(
+                corte_id=corte.id,
+                tipo_producto_id=short.id,
+                taller_id=taller.id,
+                proporciones=1,
+                fecha_asignacion=HOY,
+            ),
+        )
 
 
 def test_la_ficha_es_un_pdf(

@@ -165,14 +165,15 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
         empresa_id: int,
         *,
         corte_id: int,
+        tipo_producto_id: int,
         taller_id: int,
         fecha: date,
         asignacion_id: int,
-        lineas_del_corte: int,
+        lineas_de_la_prenda: int,
     ) -> list[AsignacionTaller]:
-        """Las filas de una misma proporción completa.
+        """Las filas de un mismo envío de una prenda.
 
-        Un envío por corte crea una asignación por línea, ids seguidos. Si
+        Un envío crea una asignación por color de la prenda, ids seguidos. Si
         este id no cae en un bloque de ese tamaño, es un envío viejo de una
         sola línea y se devuelve sola.
         """
@@ -185,11 +186,12 @@ class AsignacionTallerRepository(BaseRepository[AsignacionTaller]):
                 AsignacionTaller.taller_id == taller_id,
                 AsignacionTaller.fecha_asignacion == fecha,
                 Lote.corte_id == corte_id,
+                Lote.tipo_producto_id == tipo_producto_id,
             )
             .order_by(AsignacionTaller.id.asc())
         )
         candidatas = list(self.db.execute(stmt).scalars().all())
-        n = lineas_del_corte
+        n = lineas_de_la_prenda
         if n <= 1:
             return [a for a in candidatas if a.id == asignacion_id]
         for i in range(0, len(candidatas) - n + 1, n):
