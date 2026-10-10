@@ -1,8 +1,8 @@
 # app/services/recepcion/cierre.py
 """Cerrar un conteo: nace la devolución y se mueve el saldo del taller.
 
-Lo usan el cierre automático al completar la proporción y, en lotes viejos,
-la aplicación al anotar. Corte ya no confirma: bodega anota y puede deshacer.
+Cada conteo de bodega se aplica al anotarlo. Corte ya no confirma: bodega
+anota y puede deshacer.
 No hace commit: quien llama cierra la transacción.
 """
 from __future__ import annotations
@@ -137,13 +137,3 @@ def deshacer_aplicacion(
     recalcular_estado_asignacion(asignacion, merma)
     AsignacionTallerService(db).recalcular_estado_lote(asignacion.lote_id, empresa_id)
 
-
-def proporcion_completa(
-    conteos: list[ConteoRecepcion], asignacion: AsignacionTaller
-) -> bool:
-    """Cierra cuando buenas + dañadas de taller cubren lo asignado.
-
-    Arreglo y materia no cuentan: uno sigue pendiente y el otro es una nota.
-    """
-    cubierto = sum(c.cantidad_buena + c.cantidad_danada for c in conteos)
-    return cubierto >= asignacion.cantidad_asignada

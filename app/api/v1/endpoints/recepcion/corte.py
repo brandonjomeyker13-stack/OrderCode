@@ -20,6 +20,20 @@ from app.services.recepcion.corte import ConfirmacionCorteService
 router = APIRouter()
 
 
+@router.get("/recibido", response_model=list[ConteoPorConfirmarOut])
+def listar_recibido(
+    response: Response,
+    pagination: PaginationParams = Depends(get_pagination),
+    contexto: Contexto = Depends(get_contexto),
+    _puesto: Usuario = Depends(requiere_corte),
+    db: Session = Depends(get_db),
+):
+    """Lo que bodega ya contó y quedó para ventas. Solo informativo."""
+    servicio = ConfirmacionCorteService(db)
+    response.headers["X-Total-Count"] = str(servicio.contar_recibido(contexto.empresa_id))
+    return servicio.listar_recibido(contexto.empresa_id, pagination.offset, pagination.page_size)
+
+
 @router.get("/por-confirmar", response_model=list[ConteoPorConfirmarOut])
 def listar_por_confirmar(
     response: Response,

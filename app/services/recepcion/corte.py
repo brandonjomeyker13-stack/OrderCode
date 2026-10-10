@@ -46,6 +46,16 @@ class ConfirmacionCorteService:
         )
         return [self._armar(c, empresa_id, por_envio) for c in conteos]
 
+    def listar_recibido(
+        self, empresa_id: int, offset: int = 0, limit: int = 50
+    ) -> list[ConteoPorConfirmarOut]:
+        """Lo que bodega ya contó, lo último primero. Corte solo lo mira."""
+        conteos = self.repo.listar_recientes(empresa_id, offset=offset, limit=limit)
+        return [self._armar(c, empresa_id, {}) for c in conteos]
+
+    def contar_recibido(self, empresa_id: int) -> int:
+        return self.repo.contar(empresa_id)
+
     def contar_por_confirmar(self, empresa_id: int) -> int:
         return self.repo.contar_por_estado(empresa_id, EstadoConteo.REPORTADO)
 

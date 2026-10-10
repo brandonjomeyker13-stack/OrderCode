@@ -417,7 +417,7 @@ def test_la_ficha_es_un_pdf(
 # --- Recepción ---
 
 
-def test_un_conteo_incompleto_no_es_inventario(
+def test_un_conteo_incompleto_ya_es_inventario(
     db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller, bodega
 ):
     negra = _linea(_tendido(db, empresa, leguins), "Negro")
@@ -436,13 +436,41 @@ def test_un_conteo_incompleto_no_es_inventario(
         usuario_id=bodega.id,
     )
 
-    assert conteo.estado == EstadoConteo.REPORTADO
-    assert InventarioService(db).resumen(empresa.id).total_disponible == 0
+    """Lo que bodega anota queda para ventas; el resto sigue en el taller."""
+    assert conteo.estado == EstadoConteo.CONFIRMADO
+    assert InventarioService(db).resumen(empresa.id).total_disponible == 10
+    assert AsignacionTallerService(db).obtener(envio.id, empresa.id).estado == (
+        EstadoAsignacion.ENTREGADO_PARCIAL
+    )
     negra_p = next(
         l for l in InventarioService(db).panorama(empresa.id).lineas if l.color == "Negro"
     )
-    assert negra_p.cantidad_en_proceso == 40
-    assert negra_p.cantidad_contada == 0
+    assert negra_p.cantidad_contada == 10
+
+
+def test_corte_ve_lo_que_bodega_conto(
+    db: Session, empresa: Empresa, leguins: TipoProducto, taller: Taller, bodega
+):
+    negra = _linea(_tendido(db, empresa, leguins), "Negro")
+    envio = AsignacionTallerService(db).crear(
+        empresa.id,
+        AsignacionTallerCreate(
+            lote_id=negra.lote_id, taller_id=taller.id, proporciones=1, fecha_asignacion=HOY
+        ),
+    )
+    RecepcionBodegaService(db).registrar(
+        empresa.id,
+        ConteoCreate(asignacion_id=envio.id, cantidad_buena=12, fecha=LLEGADA),
+        usuario_id=bodega.id,
+    )
+
+    recibido = ConfirmacionCorteService(db).listar_recibido(empresa.id)
+
+    assert len(recibido) == 1
+    assert recibido[0].cantidad_buena == 12
+    assert recibido[0].cantidad_asignada == 20
+    assert recibido[0].contado_por == "Laura"
+    assert ConfirmacionCorteService(db).contar_por_confirmar(empresa.id) == 0
 
 
 def test_al_completar_la_proporcion_se_cierra_sola(
@@ -494,8 +522,11 @@ def test_el_arreglo_sigue_pendiente(
         usuario_id=bodega.id,
     )
 
-    assert conteo.estado == EstadoConteo.REPORTADO
-    assert InventarioService(db).resumen(empresa.id).total_disponible == 0
+    assert conteo.estado == EstadoConteo.CONFIRMADO
+    assert InventarioService(db).resumen(empresa.id).total_disponible == 15
+    assert AsignacionTallerService(db).obtener(envio.id, empresa.id).estado == (
+        EstadoAsignacion.ENTREGADO_PARCIAL
+    )
 
 
 def test_lo_danado_del_taller_cierra_y_no_entra_al_inventario(
@@ -639,11 +670,14 @@ def test_bodega_corrige_despues_de_cerrar_la_proporcion(
     assert conteo.estado == EstadoConteo.CONFIRMADO
     assert InventarioService(db).resumen(empresa.id).total_disponible == 20
 
-    incompleto = RecepcionBodegaService(db).corregir(
+    menos = RecepcionBodegaService(db).corregir(
         conteo.id, empresa.id, ConteoUpdate(cantidad_buena=18)
     )
-    assert incompleto.estado == EstadoConteo.REPORTADO
-    assert InventarioService(db).resumen(empresa.id).total_disponible == 0
+    assert menos.estado == EstadoConteo.CONFIRMADO
+    assert InventarioService(db).resumen(empresa.id).total_disponible == 18
+    assert AsignacionTallerService(db).obtener(envio.id, empresa.id).estado == (
+        EstadoAsignacion.ENTREGADO_PARCIAL
+    )
 
     otra_vez = RecepcionBodegaService(db).corregir(
         conteo.id, empresa.id, ConteoUpdate(cantidad_buena=20)

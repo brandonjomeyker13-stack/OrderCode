@@ -63,6 +63,27 @@ class ConteoRecepcionRepository(BaseRepository[ConteoRecepcion]):
         )
         return list(self.db.execute(stmt).scalars().all())
 
+    def listar_recientes(
+        self, empresa_id: int, offset: int = 0, limit: int = 50
+    ) -> list[ConteoRecepcion]:
+        stmt = (
+            select(ConteoRecepcion)
+            .where(ConteoRecepcion.empresa_id == empresa_id)
+            .options(self._con_contexto())
+            .order_by(ConteoRecepcion.fecha.desc(), ConteoRecepcion.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
+    def contar(self, empresa_id: int) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(ConteoRecepcion)
+            .where(ConteoRecepcion.empresa_id == empresa_id)
+        )
+        return self.db.execute(stmt).scalar_one()
+
     def contar_por_estado(self, empresa_id: int, estado: EstadoConteo) -> int:
         stmt = (
             select(func.count())

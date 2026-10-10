@@ -22,7 +22,7 @@ from app.schemas.recepcion import (
 )
 from app.schemas.taller import TallerOut
 from app.services.corte_service import etiqueta_de
-from app.services.recepcion.cierre import aplicar_confirmacion, deshacer_aplicacion, proporcion_completa
+from app.services.recepcion.cierre import aplicar_confirmacion, deshacer_aplicacion
 
 #: Identifica la operación ante el registro de Idempotency-Key. Es un
 #: identificador opaco, no una URL: si la ruta cambia, este literal NO debe
@@ -288,15 +288,11 @@ class RecepcionBodegaService:
         return asignacion
 
     def _aplicar_conteos(self, asignacion, empresa_id: int, usuario_id: int) -> None:
-        """Aplica los reportes que todavía están sueltos.
+        """Lo que bodega anota queda listo para ventas en ese momento.
 
-        En el flujo nuevo (capas) espera a que la proporción esté completa.
-        En el viejo, cada tanda se aplica al anotarla: corte ya no confirma.
+        Corte solo lo ve. El envío se cierra solo cuando lo contado cubre lo
+        que salió; si falta, sigue pendiente en el taller.
         """
-        lote = self.lote_repo.get_by_id(asignacion.lote_id, empresa_id)
-        if lote is not None and lote.es_por_proporciones:
-            self._cerrar_si_proporcion_completa(asignacion, empresa_id, usuario_id)
-            return
         bloqueada = self.asignacion_repo.get_by_id_bloqueando(asignacion.id, empresa_id)
         if bloqueada is None:
             return
@@ -309,22 +305,6 @@ class RecepcionBodegaService:
                     empresa_id,
                     usuario_id,
                     ignorar_tope=True,
-                )
-
-    def _cerrar_si_proporcion_completa(
-        self, asignacion, empresa_id: int, usuario_id: int
-    ) -> None:
-        """Laura cuenta y al completar la proporción se cierra sola."""
-        conteos = self.repo.listar_de_asignacion(asignacion.id, empresa_id)
-        if not proporcion_completa(conteos, asignacion):
-            return
-        bloqueada = self.asignacion_repo.get_by_id_bloqueando(asignacion.id, empresa_id)
-        if bloqueada is None:
-            return
-        for conteo in conteos:
-            if conteo.estado == EstadoConteo.REPORTADO:
-                aplicar_confirmacion(
-                    self.db, conteo, bloqueada, empresa_id, usuario_id, ignorar_tope=True
                 )
 
     def _asegurar_disponible(self, lote_id: int, empresa_id: int, bajas: int) -> None:

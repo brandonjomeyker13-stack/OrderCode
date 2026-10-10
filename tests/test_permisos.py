@@ -77,6 +77,7 @@ MATRIZ = {
     ("/api/v1/asignaciones/{asignacion_id}/ficha.pdf", "GET"): requiere_corte,
     # Corte compara lo que mandó contra lo que bodega contó, y confirma.
     ("/api/v1/recepcion/por-confirmar", "GET"): requiere_corte,
+    ("/api/v1/recepcion/recibido", "GET"): requiere_corte,
     ("/api/v1/recepcion/conteos/{conteo_id}/comparacion", "GET"): requiere_corte,
     ("/api/v1/recepcion/conteos/{conteo_id}/confirmar", "POST"): requiere_corte,
 
