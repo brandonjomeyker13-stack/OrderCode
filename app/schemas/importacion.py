@@ -21,6 +21,8 @@ class ResumenImportacion(BaseModel):
 
     talleres_a_crear: int
     productos_a_crear: int
+    colores_a_crear: int = 0
+    usuarios_a_crear: int = 0
     problemas: list[ProblemaImportacion]
     # False si hay cualquier problema: la importación es todo o nada.
     se_puede_importar: bool
@@ -29,3 +31,5 @@ class ResumenImportacion(BaseModel):
 class ResultadoImportacion(BaseModel):
     talleres_creados: int
     productos_creados: int
+    colores_creados: int = 0
+    usuarios_creados: int = 0

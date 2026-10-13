@@ -18,14 +18,32 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ValidationError
-from app.core.importacion import HOJA_PRODUCTOS, HOJA_TALLERES, plantilla
+from app.core.importacion import (
+    HOJA_COLORES,
+    HOJA_PRODUCTOS,
+    HOJA_TALLERES,
+    HOJA_USUARIOS,
+    plantilla,
+)
+from app.core.security import verify_password
+from app.models.color import Color
 from app.models.empresa import Empresa
 from app.models.taller import Taller
 from app.models.tipo_producto import TipoProducto
+from app.models.usuario import Usuario
 from app.services.importacion_service import ImportacionService
 
 
-def _archivo(talleres=None, productos=None, titulos_talleres=None, titulos_productos=None):
+def _archivo(
+    talleres=None,
+    productos=None,
+    colores=None,
+    usuarios=None,
+    titulos_talleres=None,
+    titulos_productos=None,
+    titulos_colores=None,
+    titulos_usuarios=None,
+):
     """Arma un .xlsx en memoria con las hojas que se le pidan."""
     libro = Workbook()
     libro.remove(libro.active)
@@ -46,6 +64,18 @@ def _archivo(talleres=None, productos=None, titulos_talleres=None, titulos_produ
             or ["Nombre del producto", "Referencia", "Precio por unidad (opcional)"]
         )
         for fila in productos:
+            hoja.append(list(fila))
+
+    if colores is not None:
+        hoja = libro.create_sheet(HOJA_COLORES)
+        hoja.append(titulos_colores or ["Nombre del color", "Hex (opcional)"])
+        for fila in colores:
+            hoja.append(list(fila))
+
+    if usuarios is not None:
+        hoja = libro.create_sheet(HOJA_USUARIOS)
+        hoja.append(titulos_usuarios or ["Nombre", "Correo", "Contraseña", "Puesto"])
+        for fila in usuarios:
             hoja.append(list(fila))
 
     buffer = io.BytesIO()
@@ -266,6 +296,134 @@ def test_se_puede_subir_solo_una_de_las_dos_hojas(db: Session, empresa: Empresa)
     )
 
     assert (resultado.talleres_creados, resultado.productos_creados) == (1, 0)
+    assert (resultado.colores_creados, resultado.usuarios_creados) == (0, 0)
+
+
+def test_importa_colores_con_hex_opcional(db: Session, empresa: Empresa):
+    contenido = _archivo(
+        colores=[
+            ("Azul rey", "#1D4ED8"),
+            ("Nude", None),
+            ("Vino", "7F1D1D"),
+        ]
+    )
+
+    resumen = ImportacionService(db).previsualizar(empresa.id, contenido)
+    assert resumen.se_puede_importar, _mensajes(resumen)
+    assert resumen.colores_a_crear == 3
+
+    ImportacionService(db).confirmar(empresa.id, contenido)
+
+    colores = {c.nombre: c for c in db.execute(select(Color)).scalars().all()}
+    assert colores["Azul rey"].hex == "#1D4ED8"
+    assert colores["Nude"].hex is None
+    assert colores["Vino"].hex == "#7F1D1D"
+
+
+def test_el_hex_de_tres_cifras_se_expande(db: Session, empresa: Empresa):
+    ImportacionService(db).confirmar(empresa.id, _archivo(colores=[("Rojo", "#F00")]))
+
+    assert db.execute(select(Color.hex)).scalar_one() == "#FF0000"
+
+
+def test_un_hex_malo_se_rechaza(db: Session, empresa: Empresa):
+    resumen = ImportacionService(db).previsualizar(
+        empresa.id, _archivo(colores=[("Azul", "azulito")])
+    )
+    assert not resumen.se_puede_importar
+    assert "hex" in _mensajes(resumen).lower()
+
+
+def test_colores_repetidos_sin_distinguir_mayusculas(db: Session, empresa: Empresa):
+    resumen = ImportacionService(db).previsualizar(
+        empresa.id, _archivo(colores=[("Azul Rey", "#0000FF"), ("azul rey", "#111111")])
+    )
+    assert not resumen.se_puede_importar
+    assert "repetido" in _mensajes(resumen)
+
+
+def test_no_duplica_un_color_que_ya_existe(db: Session, empresa: Empresa):
+    db.add(Color(
+        empresa_id=empresa.id, nombre="Negro", nombre_normalizado="negro", hex="#111111"
+    ))
+    db.commit()
+
+    resumen = ImportacionService(db).previsualizar(
+        empresa.id, _archivo(colores=[("negro", "#000000")])
+    )
+    assert not resumen.se_puede_importar
+    assert "ya tienes" in _mensajes(resumen).lower()
+
+
+def test_importa_usuarios_con_su_puesto(db: Session, empresa: Empresa):
+    contenido = _archivo(
+        usuarios=[
+            ("Laura Corte", "laura@fabrica.com", "clave-segura-1", "corte"),
+            ("Pedro Bodega", "pedro@fabrica.com", "clave-segura-2", "Administrador"),
+        ]
+    )
+
+    resumen = ImportacionService(db).previsualizar(empresa.id, contenido)
+    assert resumen.se_puede_importar, _mensajes(resumen)
+    assert resumen.usuarios_a_crear == 2
+
+    ImportacionService(db).confirmar(empresa.id, contenido)
+
+    usuarios = {u.email: u for u in db.execute(select(Usuario)).scalars().all()}
+    assert usuarios["laura@fabrica.com"].rol.value == "corte"
+    assert usuarios["pedro@fabrica.com"].rol.value == "admin"
+    assert verify_password("clave-segura-1", usuarios["laura@fabrica.com"].password_hash)
+
+
+def test_un_puesto_invalido_se_rechaza(db: Session, empresa: Empresa):
+    resumen = ImportacionService(db).previsualizar(
+        empresa.id,
+        _archivo(usuarios=[("Ana", "ana@fabrica.com", "clave-segura-1", "costura")]),
+    )
+    assert not resumen.se_puede_importar
+    assert "puesto" in _mensajes(resumen).lower()
+
+
+def test_contraseña_corta_se_rechaza(db: Session, empresa: Empresa):
+    resumen = ImportacionService(db).previsualizar(
+        empresa.id, _archivo(usuarios=[("Ana", "ana@fabrica.com", "corta", "corte")])
+    )
+    assert not resumen.se_puede_importar
+    assert "contraseña" in _mensajes(resumen).lower()
+
+
+def test_correo_de_usuario_repetido_en_el_archivo(db: Session, empresa: Empresa):
+    resumen = ImportacionService(db).previsualizar(
+        empresa.id,
+        _archivo(
+            usuarios=[
+                ("Ana", "ana@fabrica.com", "clave-segura-1", "corte"),
+                ("Otra Ana", "ANA@fabrica.com", "clave-segura-2", "bodega"),
+            ]
+        ),
+    )
+    assert not resumen.se_puede_importar
+    assert "repetido" in _mensajes(resumen)
+
+
+def test_no_pisa_un_correo_que_ya_existe(db: Session, empresa: Empresa, admin: Usuario):
+    resumen = ImportacionService(db).previsualizar(
+        empresa.id,
+        _archivo(usuarios=[("Otro", admin.email, "clave-segura-1", "corte")]),
+    )
+    assert not resumen.se_puede_importar
+    assert "ya está en uso" in _mensajes(resumen)
+
+
+def test_una_fila_mala_de_color_no_crea_talleres(db: Session, empresa: Empresa):
+    contenido = _archivo(
+        talleres=[("Taller Bueno", "3001234567")],
+        colores=[("Azul", "no-es-hex")],
+    )
+    with pytest.raises(ValidationError):
+        ImportacionService(db).confirmar(empresa.id, contenido)
+    assert _contar(db, Taller, empresa.id) == 0
+    assert _contar(db, Color, empresa.id) == 0
 
 
 # --- Precios: donde adivinar cuesta plata ---
@@ -341,7 +499,9 @@ def test_la_plantilla_se_puede_llenar_y_reimportar(db: Session, empresa: Empresa
     descarga, se llena tal cual, y entra sin problemas."""
     libro = load_workbook(io.BytesIO(plantilla()))
     libro[HOJA_TALLERES].append(["Taller de la Plantilla", "3001234567", None, None])
-    libro[HOJA_PRODUCTOS].append(["Producto de la Plantilla", "REF-P1", 2500])
+    libro[HOJA_PRODUCTOS].append(["Producto de la Plantilla", "REF-P1"])
+    libro[HOJA_COLORES].append(["Azul rey", "#1D4ED8"])
+    libro[HOJA_USUARIOS].append(["Laura", "laura@fabrica.com", "clave-segura-1", "corte"])
     buffer = io.BytesIO()
     libro.save(buffer)
 
@@ -349,6 +509,7 @@ def test_la_plantilla_se_puede_llenar_y_reimportar(db: Session, empresa: Empresa
 
     assert resumen.se_puede_importar, _mensajes(resumen)
     assert (resumen.talleres_a_crear, resumen.productos_a_crear) == (1, 1)
+    assert (resumen.colores_a_crear, resumen.usuarios_a_crear) == (1, 1)
 
 
 def test_la_plantilla_no_trae_filas_de_ejemplo(db: Session, empresa: Empresa):
@@ -358,3 +519,5 @@ def test_la_plantilla_no_trae_filas_de_ejemplo(db: Session, empresa: Empresa):
 
     assert resumen.talleres_a_crear == 0
     assert resumen.productos_a_crear == 0
+    assert resumen.colores_a_crear == 0
+    assert resumen.usuarios_a_crear == 0

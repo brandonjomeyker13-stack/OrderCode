@@ -42,7 +42,7 @@ def _leer_subida(archivo: UploadFile) -> bytes:
 def descargar_plantilla(
     _admin: Usuario = Depends(require_admin),
 ):
-    """La plantilla que el cliente llena con sus talleres y productos.
+    """La plantilla que el cliente llena con talleres, productos, colores y usuarios.
 
     Va con hojas y títulos fijos a propósito: adivinar la estructura de un
     Excel cualquiera acierta casi siempre, y cuando falla crea datos malos en
@@ -78,7 +78,7 @@ def confirmar_importacion(
     _admin: Usuario = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Crea los talleres y productos del archivo. Todo o nada.
+    """Crea los talleres, productos, colores y usuarios del archivo. Todo o nada.
 
     Se vuelve a subir el mismo archivo en vez de guardar la previsualización
     en el servidor: así no hay estado a medias que expire ni que se cruce

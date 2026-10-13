@@ -22,6 +22,11 @@ class ColorRepository(BaseRepository[Color]):
             stmt = stmt.where(Color.activo.is_(True))
         return list(self.db.execute(stmt.order_by(Color.nombre)).scalars().all())
 
+    def nombres_normalizados(self, empresa_id: int) -> list[str]:
+        """Para avisar en la importación cuando un color ya está en el catálogo."""
+        stmt = select(Color.nombre_normalizado).where(Color.empresa_id == empresa_id)
+        return list(self.db.execute(stmt).scalars().all())
+
     def buscar_por_nombre(self, empresa_id: int, nombre: str) -> Color | None:
         stmt = select(Color).where(
             Color.empresa_id == empresa_id,

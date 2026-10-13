@@ -11,6 +11,16 @@ class UsuarioRepository(BaseRepository[Usuario]):
     def __init__(self, db: Session):
         super().__init__(Usuario, db)
 
+    def emails_existentes(self, emails: list[str]) -> set[str]:
+        """Cuáles de esos correos ya están tomados. El email es único en
+        toda la base (no por empresa): el login ocurre antes de saber el
+        tenant, igual que get_by_email."""
+        if not emails:
+            return set()
+        claves = [e.strip().lower() for e in emails]
+        stmt = select(func.lower(Usuario.email)).where(func.lower(Usuario.email).in_(claves))
+        return {e for e in self.db.execute(stmt).scalars().all() if e}
+
     def get_by_email(self, email: str) -> Usuario | None:
         """
         Sin filtro de empresa_id a propósito: el login ocurre ANTES de saber
